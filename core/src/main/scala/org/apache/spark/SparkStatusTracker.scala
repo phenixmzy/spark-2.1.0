@@ -33,6 +33,7 @@ import org.apache.spark.scheduler.TaskSchedulerImpl
  *
  * NOTE: this class's constructor should be considered private and may be subject to change.
  */
+/** 一个用于上报监控job 和 stage 进度到底层api */
 class SparkStatusTracker private[spark] (sc: SparkContext) {
 
   private val jobProgressListener = sc.jobProgressListener

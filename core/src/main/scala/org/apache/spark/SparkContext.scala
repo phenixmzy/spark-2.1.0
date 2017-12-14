@@ -70,6 +70,10 @@ import org.apache.spark.util._
  * @param config a Spark Config object describing the application configuration. Any settings in
  *   this config overrides the default configs as well as system properties.
  */
+/**
+  * 代表连接到spark集群,能被用于创建rdd,计算器,广播变量.
+  * 在一个JVM里面,只能有一个SparkContext.在创建一个新的SparkContext之前,必须先调用stop.
+  * */
 class SparkContext(config: SparkConf) extends Logging {
 
   // The call site where this SparkContext was constructed.
@@ -264,6 +268,7 @@ class SparkContext(config: SparkConf) extends Logging {
   private[spark] val addedJars = new ConcurrentHashMap[String, Long]().asScala
 
   // Keeps track of all persisted RDDs
+  // 保存driver端被持久化的 RDDs
   private[spark] val persistentRdds = {
     val map: ConcurrentMap[Int, RDD[_]] = new MapMaker().weakValues().makeMap[Int, RDD[_]]()
     map.asScala
@@ -289,6 +294,7 @@ class SparkContext(config: SparkConf) extends Logging {
   private[spark] def executorMemory: Int = _executorMemory
 
   // Environment variables to pass to our executors.
+  // 传递给executor的环境变量
   private[spark] val executorEnvs = HashMap[String, String]()
 
   // Set SPARK_USER for user who is running SparkContext.
@@ -314,6 +320,7 @@ class SparkContext(config: SparkConf) extends Logging {
    *  in case of YARN something like 'application_1433865536131_34483'
    * )
    */
+  /** Spark application的唯一定义并其由实现的调度确定.*/
   def applicationId: String = _applicationId
   def applicationAttemptId: Option[String] = _applicationAttemptId
 
@@ -370,7 +377,7 @@ class SparkContext(config: SparkConf) extends Logging {
         s" ${SparkContext.VALID_LOG_LEVELS.mkString(",")}")
     Utils.setLogLevel(org.apache.log4j.Level.toLevel(upperCased))
   }
-
+  //初始化SparkContext
   try {
     _conf = config.clone()
     _conf.validateSettings()
@@ -425,10 +432,12 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // "_jobProgressListener" should be set up before creating SparkEnv because when creating
     // "SparkEnv", some messages will be posted to "listenerBus" and we should not miss them.
+    // _jobProgressListener会在SparkEnv创建前先启动,因为当创建SparkEnv会需要post一些信息到listenerBus
     _jobProgressListener = new JobProgressListener(_conf)
     listenerBus.addListener(jobProgressListener)
 
     // Create the Spark execution environment (cache, map output tracker, etc)
+    // 创建spark env
     _env = createSparkEnv(_conf, isLocal, listenerBus)
     SparkEnv.set(_env)
 
@@ -437,7 +446,7 @@ class SparkContext(config: SparkConf) extends Logging {
       val replUri = _env.rpcEnv.fileServer.addDirectory("/classes", new File(path))
       _conf.set("spark.repl.class.uri", replUri)
     }
-
+    //一个用于上报监控job 和 stage 进度
     _statusTracker = new SparkStatusTracker(this)
 
     _progressBar =
@@ -497,6 +506,10 @@ class SparkContext(config: SparkConf) extends Logging {
     _heartbeatReceiver = env.rpcEnv.setupEndpoint(
       HeartbeatReceiver.ENDPOINT_NAME, new HeartbeatReceiver(this))
 
+    // 1 创建TaskScheduler
+    // 2 创建DAGScheduler
+    // 3 启动TaskScheduler
+
     // Create and start the scheduler
     val (sched, ts) = SparkContext.createTaskScheduler(this, master, deployMode)
     _schedulerBackend = sched
@@ -537,7 +550,7 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // Optionally scale number of executors dynamically based on workload. Exposed for testing.
     /**
-      * executor数动态扩展.
+      * 动态扩展executor数量.
       * */
     val dynamicAllocationEnabled = Utils.isDynamicAllocationEnabled(_conf)
     _executorAllocationManager =
