@@ -51,7 +51,7 @@ import org.apache.spark.util._
   *
   *spark stage的dag图创建是一个shuffle为界。rdd的操作
   * 如果是窄依赖，在每个stage内像map，filter等流水线组成一组task，
-  * 如果是shuffle依赖，则要求多个stage（一份写入map out的文件，被其他多个读取这些文件，以此为栏栅）
+  * 如果是shuffle宽依赖，则要求多个stage（一份写入map out的文件，被其他多个读取这些文件，以此为栏栅）
   *
   *此外提供dag调度，dag调度基于当前内存状态决定每个task运行的首选位置，传给底层的task调度。
   *与此同时，还要处理shuffle输出文件的丢失，这种情况old的stage可能需要resubmit。如果stage失败并非由shuffle文件丢失引起，每个stage会重试num times。
@@ -69,7 +69,7 @@ import org.apache.spark.util._
   * DAGScheduler能计算出哪些rdd被缓存避免重新计算，而且记得哪些stage输出shuffle map file避免map端重做shuffle。
   *
   *－Preferred locations
-  *DAGScheduler基于rdd首选位置，cache，shuffle data 计算出stage里面每个task的运行位置。
+  * DAGScheduler基于rdd首选位置，cache，shuffle data 计算出stage里面每个task的运行位置。
   *
   *- Cleanup
   * 当依赖于它们的运行作业完成时，所有数据结构将被清除，以防止长时间运行的application内存泄露。
@@ -285,8 +285,6 @@ class DAGScheduler(
     * 下面三个方法处理executor 心跳接收／丢失／add。
     * 通过发送对应的事件到eventQueue里面，通过轮询eventQueue.take()获取，由onReceive处理不同到event.
     * executorLost and executorAdded 通过post一个事件到evnentQueue里面，通过轮询eventQueue.take()获取，由onReceive处理不同到event。
-    *
-    *
     * executorHeartbeatReceived 发送心跳信息，心跳带监控信息。
     */
   /**
