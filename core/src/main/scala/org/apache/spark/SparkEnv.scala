@@ -52,6 +52,13 @@ import org.apache.spark.util.{RpcUtils, Utils}
  * NOTE: This is not intended for external use. This is exposed for Shark and may be made private
  *       in a future release.
  */
+/**
+  * 持有所有spark实体中的运行时环境对象.spark实体包含master or worker.
+  * 环境对象包括serializer, RpcEnv, block manager, map output tracker等等.
+  * 当前SparkEnv是一个全局变量, 通过SparkEnv.get 获取访问.
+  * SparkEnv分两种,Drive 和 Executor 分别由createDriverEnv 和 createExecutorEnv,分别由Driver 和 Executor所持有.
+  *
+  * */
 @DeveloperApi
 class SparkEnv (
     val executorId: String,

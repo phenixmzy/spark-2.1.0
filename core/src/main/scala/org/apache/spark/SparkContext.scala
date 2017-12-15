@@ -71,7 +71,7 @@ import org.apache.spark.util._
  *   this config overrides the default configs as well as system properties.
  */
 /**
-  * 代表连接到spark集群,能被用于创建rdd,计算器,广播变量.
+  * Spark到主要入口.代表连接到spark集群,被用于创建rdd,计算器,广播变量.
   * 在一个JVM里面,只能有一个SparkContext.在创建一个新的SparkContext之前,必须先调用stop.
   * */
 class SparkContext(config: SparkConf) extends Logging {
@@ -200,8 +200,8 @@ class SparkContext(config: SparkConf) extends Logging {
   private var _eventLogDir: Option[URI] = None
   private var _eventLogCodec: Option[String] = None
   private var _env: SparkEnv = _
-  private var _jobProgressListener: JobProgressListener = _
-  private var _statusTracker: SparkStatusTracker = _
+  private var _jobProgressListener: JobProgressListener = _ //跟踪task-level 信息,并且会在ui上被显示
+  private var _statusTracker: SparkStatusTracker = _ //上报监控job 和 stage 进度
   private var _progressBar: Option[ConsoleProgressBar] = None
   private var _ui: Option[SparkUI] = None
   private var _hadoopConfiguration: Configuration = _

@@ -40,6 +40,7 @@ import org.apache.spark.ui.jobs.UIData._
  * class, since the UI thread and the EventBus loop may otherwise be reading and
  * updating the internal data structures concurrently.
  */
+/** 跟踪task-level 信息,并且会在ui上被显示 */
 @DeveloperApi
 class JobProgressListener(conf: SparkConf) extends SparkListener with Logging {
 
