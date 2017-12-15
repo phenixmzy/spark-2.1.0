@@ -138,7 +138,7 @@ private[spark] class EventLoggingListener(
     // scalastyle:on println
     if (flushLogger) {
       writer.foreach(_.flush())
-//      hadoopDataStream.foreach(_.hflush())
+      // hadoopDataStream.foreach(_.hflush())
       hadoopDataStream.foreach(ds => ds.getWrappedStream match {
         case wrapped: DFSOutputStream => wrapped.hsync(EnumSet.of(SyncFlag.UPDATE_LENGTH))
         case _ => ds.hflush()
