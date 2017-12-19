@@ -42,6 +42,7 @@ import org.apache.spark.internal.Logging
  * @param tellMaster whether state changes for this block should be reported to the master. This
  *                   is true for most blocks, but is false for broadcast blocks.
  */
+/** 为block跟踪元数据.这个类接口不是线程安全对的,通过BlockInfoManager里面的lock保护它 */
 private[storage] class BlockInfo(
     val level: StorageLevel,
     val classTag: ClassTag[_],
@@ -106,12 +107,15 @@ private[storage] object BlockInfo {
 /**
  * Component of the [[BlockManager]] which tracks metadata for blocks and manages block locking.
  *
- * The locking interface exposed by this class is readers-writer lock. Every lock acquisition is
+ * The locking interface exposed（暴露） by this class is readers-writer lock. Every lock acquisition is
  * automatically associated with a running task and locks are automatically released upon task
  * completion or failure.
  *
  * This class is thread-safe.
  */
+/** BlockManager的组件,它跟踪blocks的元数据以及管理block的lock.
+  * 锁接口通过这个类的读写锁暴露.每个锁都会在task运行时自动获得并在task完成或失败时自动释放.
+  * */
 private[storage] class BlockInfoManager extends Logging {
 
   private type TaskAttemptId = Long
