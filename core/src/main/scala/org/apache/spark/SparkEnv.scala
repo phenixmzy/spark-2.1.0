@@ -228,6 +228,7 @@ object SparkEnv extends Logging {
     * 2.调用RpcEnv.create创建RPCEnv
     * 3.创建BroadcastManager,
     * 4.创建MapOutputTrackerMaster/MapOutputTrackerWorker
+    * 4.1 MapOutputTrackerMaster
     * 5.创建shuffleManager
     * 6.创建MemoryManager
     * 7.创建BlockTransferService
