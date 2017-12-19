@@ -33,6 +33,9 @@ import org.apache.spark.util.Utils
  * of ID objects. Also, constructor parameters are private to ensure that parameters cannot be
  * modified from outside this class.
  */
+/** 这个类代表了BlockManager的唯一定义.
+  * 它的两个构造函数都是private是确保只有使用apply方法能创建对象.这个可以允许重复id对象的数据删除.构造函数参数为private则保证不会外界修改.
+  * */
 @DeveloperApi
 class BlockManagerId private (
     private var executorId_ : String,
