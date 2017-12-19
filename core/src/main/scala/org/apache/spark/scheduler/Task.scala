@@ -53,6 +53,12 @@ import org.apache.spark.util._
  * @param appId id of the app this task belongs to
  * @param appAttemptId attempt id of the app this task belongs to
  */
+/**
+  * 任务执行到基本单元.在spark中有两类Task,分别是ShuffleMapTask,ResultTask.
+  * 一个Spark Job由一个或多个stages组成.job里面最last那个stage由多个ResultTask组成,而最早stage却由ShuffleMapTasks组成.
+  * ResultTask执行task并发送task到输出返回给划分的application.
+  * ShuffleMapTask执行task并划分task输出到多个桶中.
+  * */
 private[spark] abstract class Task[T](
     val stageId: Int,
     val stageAttemptId: Int,
@@ -208,6 +214,10 @@ private[spark] abstract class Task[T](
  * the task might depend on one of the JARs. Thus we serialize each task as multiple objects, by
  * first writing out its dependencies.
  */
+/** 处理task的转换和依赖,因为这可能有点棘手／复杂.
+  * 我们需要发送一系列的jar和files并set入到SparkContext中,以确保每个task能在所在到work中找这些文件,但我们不能把它们作为
+  * task到一部分,因为用户代码在task里面可能依赖一些jars.因此我们序列化每个task为多个对象,并首先写出它到依赖.
+  * */
 private[spark] object Task {
   /**
    * Serialize a task and the current app dependencies (files and JARs added to the SparkContext)

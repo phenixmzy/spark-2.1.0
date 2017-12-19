@@ -22,6 +22,7 @@ package org.apache.spark.scheduler
  * TaskSchedulerImpl. We assume a Mesos-like model where the application gets resource offers as
  * machines become available and can launch tasks on them.
  */
+/** 调度系统的后台接口,它允许插入不同的TaskSchedulerImpl.我们假定了一个类似于Mesos的模型它能为application提供资源获取机制,运行task. */
 private[spark] trait SchedulerBackend {
   private val appId = "spark-application-" + System.currentTimeMillis
 

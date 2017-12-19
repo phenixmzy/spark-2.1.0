@@ -51,6 +51,12 @@ import org.apache.spark.util.{AccumulatorV2, ThreadUtils, Utils}
  * acquire a lock on us, so we need to make sure that we don't try to lock the backend while
  * we are holding a lock on ourselves.
  */
+/** 通过SchedulerBackend代理为多种类型集群调度task.它可以通过使用LocalSchedulerBackend在本地启动组织work.
+  * 它处理相同的逻辑,决定job的调度顺序,唤醒并运行speculative tasks等.
+  * Client应该首先调用initialize() and start(),然后通过runTasks方法提交taskset.
+  * SchedulerBackend 和task提交的客户端都可以在多线程环境中调用这个类,所以在public的api方法中维护它的状态.另外,一些SchedulerBackend
+  * 当它想发送事件到这个类时,它们会使用同步,获得唯一到锁.
+  * */
 private[spark] class TaskSchedulerImpl(
     val sc: SparkContext,
     val maxTaskFailures: Int,

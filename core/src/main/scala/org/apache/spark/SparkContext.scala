@@ -2025,6 +2025,7 @@ class SparkContext(config: SparkConf) extends Logging {
   /**
    * Submit a job for execution and return a FutureJob holding the result.
    */
+  /** 提交执行一个job,并返回相应的result.该方法时在rdd中调用,一旦触发rdd的acation,就会通过sparkContext提交Job */
   def submitJob[T, U, R](
       rdd: RDD[T],
       processPartition: Iterator[T] => U,

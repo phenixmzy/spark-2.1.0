@@ -47,6 +47,9 @@ import org.apache.spark.util.io.ChunkedByteBuffer
  * An internal RPC interface is used for communication with the driver,
  * except in the case of Mesos fine-grained mode.
  */
+/** Spark执行器,通过线程池运行task.
+  * 它能被用于Mesos,Yarn,standalone调度.内部rpc接口被用于与driver通讯,除Mesos细粒度模式外.
+  * */
 private[spark] class Executor(
     executorId: String,
     executorHostname: String,
