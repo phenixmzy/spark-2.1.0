@@ -35,7 +35,6 @@ import org.apache.spark.storage.BlockId
   * 同理,executor也一样.
   * */
 
-
 private[spark] class StaticMemoryManager(
     conf: SparkConf,
     maxOnHeapExecutionMemory: Long,
