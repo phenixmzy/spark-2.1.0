@@ -56,8 +56,9 @@ import org.apache.spark.util.{RpcUtils, Utils}
   * 持有所有spark实体中的运行时环境对象.spark实体包含master or worker.
   * 环境对象包括serializer, RpcEnv, block manager, map output tracker等等.
   * 当前SparkEnv是一个全局变量, 通过SparkEnv.get 获取访问.
-  * SparkEnv分两种,Drive 和 Executor 分别由createDriverEnv 和 createExecutorEnv,分别由Driver 和 Executor所持有.
+  * SparkEnv分两种,Drive 和 Executor 分别由createDriverEnv 和 createExecutorEnv,分别由Driver 和 CoarseGrainedExecutorBackend所持有.
   * SparkEnv中最重要的是create方法.
+  *
   * */
 @DeveloperApi
 class SparkEnv (
@@ -222,19 +223,21 @@ object SparkEnv extends Logging {
    * Helper method to create a SparkEnv for a driver or an executor.
    */
   /**
-    * 该create方法是一个辅助方法.用于创建位于driver or executor端的SparkEnv对象.
+    * 该create方法是一个辅助方法.用于创建位于driver or CoarseGrainedExecutorBackend端的SparkEnv对象.
     * SparkEnv构造不骤如下:
-    * 1.创建SecurityManager
-    * 2.调用RpcEnv.create创建RPCEnv
-    * 3.创建BroadcastManager,
-    * 4.创建MapOutputTrackerMaster/MapOutputTrackerWorker
-    * 4.1 MapOutputTrackerMaster
-    * 5.创建shuffleManager
-    * 6.创建MemoryManager
-    * 7.创建BlockTransferService
-    * 8.创建BlockManagerMaster
-    * 9.创建BlockManager
-    * 10.创建MetricsSystem
+    * 1)创建安全管理器 SecurityManager
+    * 2)调用RpcEnv.create创建RPCEnv
+    * 3)创建 广播管理器 BroadcastManager,
+    * 4)创建MapOutputTrackerMaster/MapOutputTrackerWorker
+    * 4.1) MapOutputTrackerMaster Map 任务输出跟踪器
+    * 4.2）MapOutputTrackerWorker (executor 场景下)
+    * 5)创建并实例化 ShuffleManager
+    * 6)创建MemoryManager
+    * 7)创建 块传输服务 BlockTransferService
+    * 8)创建BlockManagerMaster
+    * 9)创建BlockManager
+    * 10)创建 测量系统 MetricsSystem
+    * 11)实例化 SparkEnv
     *
     * */
   private def create(
