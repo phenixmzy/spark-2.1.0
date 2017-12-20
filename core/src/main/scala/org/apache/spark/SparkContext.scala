@@ -73,6 +73,15 @@ import org.apache.spark.util._
 /**
   * Spark到主要入口.代表连接到spark集群,被用于创建rdd,计算器,广播变量.
   * 在一个JVM里面,只能有一个SparkContext.在创建一个新的SparkContext之前,必须先调用stop.
+  * 通常而言,Driver Application 的执行与输出都是通过 SparkContext 来完 成的,在正式提交 Application 之前,首先需要初始化 SparkContext。
+  * SparkContext 隐 藏了网络通信、分布式部署、消息通信、存储能力、计算能力、缓存、测量系统、文 件服务、Web 服务等内容,应用程序开发者只需要使用 SparkContext 提供的 API 完成 功能开发。
+  * SparkContext:
+  * 内置的 DAGScheduler 负责创建 Job,将 DAG 中的 RDD 划 分到不同的 Stage,提交 Stage 等功能。
+  * 内置的 TaskScheduler 负责资源的申请、任务 的提交及请求集群对任务的调度等工作。
+  * Spark Driver 用于提交用户应用程序,实际可以看作 Spark 的客户端。Spark Driver 的初始化始终围绕着 SparkContext 的初始化。SparkContext 可以算得上是所 有 Spark 应用程序的发动机引擎。SparkContext 初始 化完毕,才能向 Spark 集群提交任务。
+  * 初始化步骤:
+  *
+  *
   * */
 class SparkContext(config: SparkConf) extends Logging {
 
@@ -378,6 +387,27 @@ class SparkContext(config: SparkConf) extends Logging {
     Utils.setLogLevel(org.apache.log4j.Level.toLevel(upperCased))
   }
   //初始化SparkContext
+  /**
+    * 0)创建 JobProgressListener
+    * 1)创建 Spark 执行环境 SparkEnv
+    * 2)创建 SparkStatusTracker,用于上报监控job 和 stage 进度
+    * 3)创建并初始化 Spark UI
+    * 4)Hadoop 相关配置及 Executor 环境变量的设置
+    * 5)启动HeartbeatReceiver,用于接收Executor回复的心跳
+    * 6)创建任务调度 SchedulerBackend 和TaskScheduler.
+    * SchedulerBackend是调度系统的后台接口,它允许插入不同的TaskSchedulerImpl.
+    * TaskScheduler的实现类是TaskSchedulerImpl,用于具体响clustermanager申请资源,分发给Executor执行.
+    * 7)创建和启动 DAGScheduler
+    * 8)TaskScheduler 的启动
+    * 9)初始化块管理器 BlockManager(BlockManager 是存储体系的主要组件之一). sparkEnv.blockManager.initialize
+    * 10)启动测量系统 MetricsSystem. sparkEnv.metricsSystem.start()
+    * 11)创建和启动 Executor 分配管理器 ExecutorAllocationManager
+    * 12)ContextCleaner 的创建与启动
+    * 13)Spark 环境更新
+    * 14)创建 DAGSchedulerSource 和 BlockManagerSource
+    * 15)将 SparkContext 标记为激活。
+    *
+    * */
   try {
     _conf = config.clone()
     _conf.validateSettings()
