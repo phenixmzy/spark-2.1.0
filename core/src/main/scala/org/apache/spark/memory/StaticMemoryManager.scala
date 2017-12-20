@@ -27,6 +27,15 @@ import org.apache.spark.storage.BlockId
  * `spark.shuffle.memoryFraction` and `spark.storage.memoryFraction` respectively. The two
  * regions are cleanly separated such that neither usage can borrow memory from the other.
  */
+/**
+  * 一个静态划分互不相交的堆空间的MemoryManager.
+  * 堆空间大小分为execution and storage两个区域,分别通过`spark.shuffle.memoryFraction` and `spark.storage.memoryFraction`指定空间大小.
+  * 这个区域的空闲空间可以相互借用.
+  * storage会保留最小 spark.storage.safetyFraction不被借用.因此最大堆内存为 spark.testing.memory ＊ spark.storage.memoryFraction ＊ spark.storage.safetyFraction
+  * 同理,executor也一样.
+  * */
+
+
 private[spark] class StaticMemoryManager(
     conf: SparkConf,
     maxOnHeapExecutionMemory: Long,
