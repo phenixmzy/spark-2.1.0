@@ -66,6 +66,9 @@ private[spark] class MapOutputTrackerMasterEndpoint(
  * a stage. This is abstract because different versions of MapOutputTracker
  * (driver and executor) use different HashMap to store its metadata.
  */
+/**
+  * 这个类跟踪stage本地map out的状态.这个是个抽象类因为不同版本的MapOutputTracker(driver and executor)使用不同的元数据
+  * */
 private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging {
 
   /** Set to the MapOutputTrackerMasterEndpoint living on the driver. */
