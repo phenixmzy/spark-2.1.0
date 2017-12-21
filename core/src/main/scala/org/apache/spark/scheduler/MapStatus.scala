@@ -28,6 +28,7 @@ import org.apache.spark.util.Utils
  * Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the
  * task ran on as well as the sizes of outputs for each reducer, for passing on to the reduce tasks.
  */
+/** 通过ShuffleMapTask返回的结果.*/
 private[spark] sealed trait MapStatus {
   /** Location where this task was run. */
   def location: BlockManagerId
@@ -89,6 +90,7 @@ private[spark] object MapStatus {
  * @param loc location where the task is being executed.
  * @param compressedSizes size of the blocks, indexed by reduce partition id.
  */
+/** MapStatus的压缩实现.跟踪每个block的大小,并且大小使用byte代表 */
 private[spark] class CompressedMapStatus(
     private[this] var loc: BlockManagerId,
     private[this] var compressedSizes: Array[Byte])
