@@ -628,6 +628,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
  * MapOutputTracker for the executors, which fetches map output information from the driver's
  * MapOutputTrackerMaster.
  */
+/** 位于executors的MapOutputTracker,用于向driver端的MapOutputTrackerMaster提取map output信息 */
 private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTracker(conf) {
   protected val mapStatuses: Map[Int, Array[MapStatus]] =
     new ConcurrentHashMap[Int, Array[MapStatus]]().asScala
