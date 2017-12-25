@@ -22,12 +22,18 @@ package org.apache.spark.scheduler
  * TaskSchedulerImpl. We assume a Mesos-like model where the application gets resource offers as
  * machines become available and can launch tasks on them.
  */
-/** 调度系统的后台接口,它允许插入不同的TaskSchedulerImpl.我们假定了一个类似于Mesos的模型它能为application提供资源获取机制,运行task. */
+/** 调度系统的后台接口,它允许插入不同的TaskSchedulerImpl.我们假定了一个类似于Mesos的模型它能为application提供资源获取机制,运行task.
+  * 位于TaskScheduler下层，用于对接不同的资源管理系统，SchedulerBackend是个接口，需要实现的主要方法如下.
+  * */
 private[spark] trait SchedulerBackend {
   private val appId = "spark-application-" + System.currentTimeMillis
 
   def start(): Unit
   def stop(): Unit
+  /**
+    * reviveOffers是一个重要方法：SchedulerBackend把自己手头上的可用资源交给TaskScheduler，TaskScheduler根据调度策略分配给排队的任务吗，返回一批可执行的任务描述，
+    * SchedulerBackend负责launchTask，即最终把task塞到了executor模型上，executor里的线程池会执行task的run()
+    * */
   def reviveOffers(): Unit
   def defaultParallelism(): Int
 
