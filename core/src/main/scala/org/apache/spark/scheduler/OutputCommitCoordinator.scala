@@ -39,6 +39,10 @@ private case class AskPermissionToCommitOutput(stage: Int, partition: Int, attem
  * This class was introduced in SPARK-4879; see that JIRA issue (and the associated pull requests)
  * for an extensive design discussion.
  */
+/**
+  * 决定task是否能提交输出到hdfs.使用"优先者提交"的策略.
+  * OutputCommitCoordinator会被driver端和executor端初始化(SparkEnv.create).
+  * */
 private[spark] class OutputCommitCoordinator(conf: SparkConf, isDriver: Boolean) extends Logging {
 
   // Initialized by SparkEnv
