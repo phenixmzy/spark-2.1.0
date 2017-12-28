@@ -28,6 +28,7 @@ import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef}
  * @param freeCores  The current number of cores available for work on the executor
  * @param totalCores The total number of cores available to the executor
  */
+/** executor数据分组,记录了某个executor有多少个core,free的还有多少.被用于CoarseGrainedSchedulerBackend. */
 private[cluster] class ExecutorData(
    val executorEndpoint: RpcEndpointRef,
    val executorAddress: RpcAddress,
