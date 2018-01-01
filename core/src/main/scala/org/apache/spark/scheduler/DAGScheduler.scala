@@ -84,6 +84,32 @@ import org.apache.spark.util._
   *
   * 所有的数据结构在job结束是会清理数据避免无限期积累数据，特别是在长时间运行的程序。
   *
+  * 作业执行一共分为六个阶段:
+  * 1 作业提交
+  * 当用户的app运行触发了RDD的Action操作时,就会调用SparkContext#runJob执行 作业提交
+  *
+  * 2 划分调度
+  * Spark调度阶段的划分是由DAGScheduler实现的,DAGScheduler会从最后一个RDD出发使用广度优先遍历整个依赖树,从而划分调度阶段.
+  * 调度阶段划分是以操作是否为宽依赖进行的.
+  * DAGScheduler#handleJobSubmitted 方法中根据传入最后一个RDD生成的ResultStage开始,从finallRDD使用createResultStage,在调度阶段中建立依赖关系.
+  * 具体调用流程如下:
+  * createResultStage ->
+  * getOrCreateParentStages ->
+  * getShuffleDependencies ->
+  * getOrCreateShuffleMapStage ->
+  * 1 getMissingAncestorShuffleDependencies
+  * 2 createShuffleMapStage -> getOrCreateParentStages
+  *
+  * 3 提交调度
+  *
+  *
+  * 4 提交任务
+  *
+  *
+  * 5 执行任务
+  *
+  *
+  * 6 返回结果
   */
 
 /**
@@ -357,8 +383,9 @@ class DAGScheduler(
    * shuffle map stage doesn't already exist, this method will create the shuffle map stage in
    * addition to any missing ancestor(祖先／原型) shuffle map stages.
    */
-  /** 该方法获得一个shuffle map stage.如果shuffleIdToMapStage中存在，则从其获取;
-    * 如果不存在，则从祖先shuffle map stages（dependencies）创建 */
+  /** 该方法获得一个shuffle map stage.如果shuffleIdToMapStage中存在,则从其获取;
+    * 如果不存在,则从祖先shuffle map stages(dependencies)创建
+    * */
   private def getOrCreateShuffleMapStage(
       shuffleDep: ShuffleDependency[_, _, _],
       firstJobId: Int): ShuffleMapStage = {
@@ -392,6 +419,7 @@ class DAGScheduler(
   /**
     * 创建一个ShuffleMapStage,它生成了shuffle依赖的partition.
     * 如果之前的运行的stage生成相同的shuffle data,则会copy 输出位置,避免重新生成.
+    * 方法原名为:newOrUsedShuffleStage,用于生成调度阶段ShuffleMapStage.
     * */
   def createShuffleMapStage(shuffleDep: ShuffleDependency[_, _, _], jobId: Int): ShuffleMapStage = {
     val rdd = shuffleDep.rdd
@@ -435,7 +463,7 @@ class DAGScheduler(
       partitions: Array[Int],
       jobId: Int,
       callSite: CallSite): ResultStage = {
-    //getOrCreateParentStages这个方法很重要,它是用来获得当前stage依赖的stage,原名为getParentStageAndId
+    //getOrCreateParentStages这个方法很重要,它是用来获得当前stage依赖的stage,用于调度阶段中创建依赖关系,原名为getParentStageAndId
     val parents = getOrCreateParentStages(rdd, jobId)
     val id = nextStageId.getAndIncrement()
     val stage = new ResultStage(id, rdd, func, partitions, parents, jobId, callSite)
@@ -451,6 +479,9 @@ class DAGScheduler(
   /**
     * getShuffleDependencies(rdd):该方法只返回该RDD所有的直接父shuffle依赖,不会返回远房祖先的shuffle依赖;
     * 遍历getOrCreateShuffleMapStage:
+    * getShuffleDependencies->getOrCreateShuffleMapStage->
+    * getMissingAncestorShuffleDependencies(向前遍历,寻找分支存在的宽依赖操作)->１getShuffleDependencies.2 createShuffleMapStage->
+    * getOrCreateShuffleMapStage
     * */
   private def getOrCreateParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
     getShuffleDependencies(rdd).map { shuffleDep =>
@@ -459,7 +490,8 @@ class DAGScheduler(
   }
 
   /** Find ancestor(祖先) shuffle dependencies that are not registered in shuffleToMapStage yet */
-  /** 找到rdd祖先的shuffle依赖,其未在shuffleToMapStage里面注册过.查找过程通过递归遍历栈查找,但会手动维护避免栈益出 */
+  /** 找到rdd祖先的shuffle依赖,其未在shuffleToMapStage里面注册过.查找过程通过递归遍历栈查找,但会手动维护避免栈益出
+    * */
   private def getMissingAncestorShuffleDependencies(
       rdd: RDD[_]): Stack[ShuffleDependency[_, _, _]] = {
     val ancestors = new Stack[ShuffleDependency[_, _, _]]
