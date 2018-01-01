@@ -161,6 +161,7 @@ private[spark] class TaskSetManager(
   }
 
   // Figure out which locality levels we have in our TaskSet, so we can do delay scheduling
+  /** 计算task的位置等级(PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY) */
   var myLocalityLevels = computeValidLocalityLevels()
   var localityWaits = myLocalityLevels.map(getLocalityWait) // Time to wait at each level
 

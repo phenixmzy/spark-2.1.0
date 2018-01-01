@@ -27,6 +27,9 @@ import org.apache.spark.{ShuffleDependency, TaskContext}
  * NOTE: this will be instantiated by SparkEnv so its constructor can take a SparkConf and
  * boolean isDriver as parameters.
  */
+/** shuffle系统的可插拔接口.ShuffleManager由位于driver和每一个executor里面的SparkEnv所创建.
+  * 创建的具体实现类基于 spark.shuffle.manager 配置而定,默认为sort.
+  * */
 private[spark] trait ShuffleManager {
 
   /**
