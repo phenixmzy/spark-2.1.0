@@ -34,13 +34,53 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend.ENDPOINT
 import org.apache.spark.util.{RpcUtils, SerializableBuffer, ThreadUtils, Utils}
 
 /**
- * A scheduler backend that waits for coarse-grained executors to connect.
+ * A scheduler backend that waits for coarse-grained(粗粒度) executors to connect.
  * This backend holds onto each executor for the duration of the Spark job rather than relinquishing
  * executors whenever a task is done and asking the scheduler to launch a new executor for
  * each new task. Executors may be launched in a variety of ways, such as Mesos tasks for the
  * coarse-grained Mesos mode or standalone processes for Spark's standalone deploy mode
  * (spark.deploy.*).
  */
+/** 一个后端调度器,等待粗粒度的executor连接.
+  *
+  * executors可能运行在各种模式上,比如messos task运行在粗粒度Messos模式,standalone processes 的spark standalone模式.
+  *
+  * 主要职能:
+  * 1.Driver端主要通过actor监听和处理下面这些事件：
+  * - RegisterExecutor(executorId, hostPort, cores, logUrls)
+  * 这是executor添加的来源，通常worker拉起、重启会触发executor的注册.
+  * CoarseGrainedSchedulerBackend把这些executor维护起来,更新内部的资源信息,比如总核数增加.
+  * 最后调用一次makeOffer(),即把手头资源丢给TaskScheduler去分配一次,返回任务描述回来,把任务launch起来.
+  * 这个makeOffer()的调用会出现在任何与资源变化相关的事件中，下面会看到.
+  *
+  * - StatusUpdate(executorId, taskId, state, data)
+  * task的状态回调.
+  * 首先,调用TaskScheduler.statusUpdate上报上去.
+  * 然后,判断这个task是否执行结束了,结束了的话把executor上的freeCore加回去，调用一次makeOffer().
+  *
+  * - ReviveOffers
+  * 这个事件就是别人直接向SchedulerBackend请求资源,直接调用makeOffer().
+  *
+  * - KillTask(taskId, executorId, interruptThread).
+  * 这个killTask的事件,会被发送给executor的actor,executor会处理KillTask这个事件.
+  *
+  * - StopExecutors
+  * 通知每一个executor,处理StopExecutor事件
+  *
+  * - RemoveExecutor(executorId, reason)
+  * 从维护信息中,那这堆executor涉及的资源数减掉，
+  * 然后调用TaskScheduler.executorLost()方法,通知上层我这边有一批资源不能用了,你处理下吧.
+  * TaskScheduler会继续把executorLost的事件上报给DAGScheduler,原因是DAGScheduler关心shuffle任务的output location.
+  * DAGScheduler会告诉BlockManager这个executor不可用了，移走它,然后把所有的stage的shuffleOutput信息都遍历一遍,移走这个executor,并且把更新后的shuffleOutput信息注册到MapOutputTracker上,最后清理下本地的CachedLocationsMap.
+  *
+  * 2.reviveOffers()方法的实现
+  * 直接调用了makeOffers()方法,得到一批可执行的任务描述,调用launchTasks.
+  *
+  * 3.launchTasks(tasks: Seq[Seq[TaskDescription]])方法
+  * 遍历每个task描述,序列化成二进制,然后发送给每个对应的executor这个任务信息
+  * 如果这个二进制信息太大,超过了9.2M(默认的akkaFrameSize 10M 减去 默认 为akka留空的200K),会出错,abort整个taskSet,并打印提醒增大akka frame size
+  * 如果二进制数据大小可接受,发送给executor的actor,处理LaunchTask(serializedTask)事件.
+  * */
 private[spark]
 class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: RpcEnv)
   extends ExecutorAllocationClient with SchedulerBackend with Logging
@@ -67,6 +107,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   // must be protected by `CoarseGrainedSchedulerBackend.this`. Besides, `executorDataMap` should
   // only be modified in `DriverEndpoint.receive/receiveAndReply` with protection by
   // `CoarseGrainedSchedulerBackend.this`.
+  /**
+    * 在DriverEndpoint.receive/receiveAndReply里面访问executorDataMap不需要任何的保护.
+    * 但是在DriverEndpoint.receive/receiveAndReply外
+    * 访问executorDataMap需要通过CoarseGrainedSchedulerBackend.this保护.
+    * */
   private val executorDataMap = new HashMap[String, ExecutorData]
 
   // Number of executors requested from the cluster manager that have not registered yet
