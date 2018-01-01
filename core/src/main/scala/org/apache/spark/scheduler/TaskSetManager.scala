@@ -35,7 +35,7 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
 /**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
- * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
+ * handles locality-aware(位置感知) scheduling for this TaskSet via delay scheduling. The main interfaces
  * to it are resourceOffer, which asks the TaskSet whether it wants to run a task on one node,
  * and statusUpdate, which tells it that one of its tasks changed state (e.g. finished).
  *
@@ -47,6 +47,11 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
  * @param maxTaskFailures if any particular task fails this number of times, the entire
  *                        task set will be aborted
  */
+/**
+  * 在DAGScheduler向TaskScheduler提交了taskSet之后,TaskSchedulerImpl 会为每个taskSet创建一个TaskSetManager对象,
+  * 该对象包含taskSet所有tasks,并管理这些tasks的执行,其中就包括计算taskSetManager中的tasks都有哪些locality levels,
+  * 以便在调度和延迟调度 tasks 时发挥作用.
+  * */
 private[spark] class TaskSetManager(
     sched: TaskSchedulerImpl,
     val taskSet: TaskSet,
