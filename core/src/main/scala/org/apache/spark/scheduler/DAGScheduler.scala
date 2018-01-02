@@ -85,10 +85,10 @@ import org.apache.spark.util._
   * 所有的数据结构在job结束是会清理数据避免无限期积累数据，特别是在长时间运行的程序。
   *
   * 作业执行一共分为六个阶段:
-  * 1 作业提交
+  * 1 作业提交(SparkContext#runJob)
   * 当用户的app运行触发了RDD的Action操作时,就会调用SparkContext#runJob执行 作业提交
   *
-  * 2 划分调度
+  * 2 划分调度(DAGScheduler#handleJobSubmitted)
   * Spark调度阶段的划分是由DAGScheduler实现的,DAGScheduler会从最后一个RDD出发使用广度优先遍历整个依赖树,从而划分调度阶段.
   * 调度阶段划分是以操作是否为宽依赖进行的.
   * DAGScheduler#handleJobSubmitted 方法中根据传入最后一个RDD生成的ResultStage开始,从finallRDD使用createResultStage,在调度阶段中建立依赖关系.
@@ -111,8 +111,10 @@ import org.apache.spark.util._
   * 2.4.1 getMissingAncestorShuffleDependencies
   * 2.4.2 createShuffleMapStage -> getOrCreateParentStages
   *
-  * 3 提交调度
-  *
+  * 3 提交调度(submitStage)
+  * 在上面划分调度阶段,在DAGScheduler的handlerJobsubmitted方法中,生成finalStage的同时建立起所有调度阶段的依赖关系,
+  * 然后通过finalStage生成一个作业实例,在该作业实例中按照顺序提交调度阶段进行执行,在执行过程中通过监听总线获取作业,执行阶段的情况.
+  * 便开始进行提交stage.
   *
   * 4 提交任务
   *
@@ -1061,7 +1063,11 @@ class DAGScheduler(
   }
 
   /** Submits stage, but first recursively submits any missing parents. */
-  /** 提交stage,但首先 递归提交 直到没有parents的root-stage */
+  /**
+    * 该方法是提交调度的起始点.
+    * 提交stage,但首先 递归提交 直到没有parents的root-stage
+    *
+    * */
   private def submitStage(stage: Stage) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
