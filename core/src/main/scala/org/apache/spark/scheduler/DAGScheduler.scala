@@ -93,12 +93,23 @@ import org.apache.spark.util._
   * 调度阶段划分是以操作是否为宽依赖进行的.
   * DAGScheduler#handleJobSubmitted 方法中根据传入最后一个RDD生成的ResultStage开始,从finallRDD使用createResultStage,在调度阶段中建立依赖关系.
   * 具体调用流程如下:
-  * createResultStage ->
-  * getOrCreateParentStages ->
-  * getShuffleDependencies ->
-  * getOrCreateShuffleMapStage ->
-  * 1 getMissingAncestorShuffleDependencies
-  * 2 createShuffleMapStage -> getOrCreateParentStages
+  * 2.1 createResultStage ->
+  * 划分调度开始,根据传入的最后一个RDD生成的ResultStage,方法会调用getOrCreateParentStages,它是用来获得当前stage依赖的stage,用于调度阶段中创建依赖关系.
+  * createResultStage结束后,整个划分调度的依赖关系树就会构建完毕.
+  *
+  * 2.2 getOrCreateParentStages ->
+  * 它是用来获得当前stage依赖的stage,用于调度阶段中创建依赖关系.是调度阶段划分的入口函数.
+  * 它调用getShuffleDependencies获得所传入RDD的上一级shuffle依赖集合,然后遍历这些shuffle集合,创建对应的ShuffleMapStage(遍历中调用getOrCreateShuffleMapStage).
+  *
+  * 2.3 getShuffleDependencies ->
+  * 该方法只返回该RDD所有的直接父shuffle依赖,不会返回远房祖先的shuffle依赖.因此,在划分阶段起初,该方只是根据最后一个RDD获取其上一级的shuffle依赖.
+  *
+  * 2.4 getOrCreateShuffleMapStage ->
+  * 通过调用getMissingAncestorShuffleDependencies获得该传入RDD的所有祖先shuffle依赖,
+  * 然后向前遍历所有祖先依赖,创建对应的shuffle map stage.
+  *
+  * 2.4.1 getMissingAncestorShuffleDependencies
+  * 2.4.2 createShuffleMapStage -> getOrCreateParentStages
   *
   * 3 提交调度
   *
@@ -480,7 +491,9 @@ class DAGScheduler(
     * getShuffleDependencies(rdd):该方法只返回该RDD所有的直接父shuffle依赖,不会返回远房祖先的shuffle依赖;
     * 遍历getOrCreateShuffleMapStage:
     * getShuffleDependencies->getOrCreateShuffleMapStage->
-    * getMissingAncestorShuffleDependencies(向前遍历,寻找分支存在的宽依赖操作)->１getShuffleDependencies.2 createShuffleMapStage->
+    * getMissingAncestorShuffleDependencies(向前遍历,寻找分支存在的宽依赖操作)->
+    * 1 getShuffleDependencies
+    * 2 createShuffleMapStage->
     * getOrCreateShuffleMapStage
     * */
   private def getOrCreateParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
