@@ -79,8 +79,8 @@ import org.apache.spark.util._
   * 如果TaskScheduler汇报task失败是应为在前一个stage的map out file已经丢失，DAGScheduler重新提交丢失的stage。
   * 这是通过completionEvent与FetchFailed 或者ExecutorLost event来检测。DAGScheduler将会等待很短的时间去查看是否有其他node或者task失败，
   * 然后为lost stage重新提交TaskSet。stage会计算失去的task。
-  * 作为这个过程的一部分，我们可能还必须为old(finised)stages 创建stage对象，它是我们之前清理过的stage 对象.
-  * 由于就的stage的attempt可能仍然在running，所以必须小心map任何事件到正确的stage 对.
+  * 作为这个过程的一部分，我们可能还必须为old(finised)stages 创建stage对象，它是我们之前清理过的stage 对象。
+  * 由于就的stage的attempt可能仍然在running，所以必须小心map任何事件到正确的stage 对象。
   *
   * 所有的数据结构在job结束是会清理数据避免无限期积累数据，特别是在长时间运行的程序。
   *
@@ -92,11 +92,7 @@ import org.apache.spark.util._
   * Spark调度阶段的划分是由DAGScheduler实现的,DAGScheduler会从最后一个RDD出发使用广度优先遍历整个依赖树,从而划分调度阶段.
   * 调度阶段划分是以操作是否为宽依赖进行的.
   * DAGScheduler#handleJobSubmitted 方法中根据传入最后一个RDD生成的ResultStage开始,从finallRDD使用createResultStage,在调度阶段中建立依赖关系.
-  *
-  * -入口函数:
-  * createResultStage
-  *
-  * -方法调用流程如下:
+  * 具体调用流程如下:
   * 2.1 createResultStage ->
   * 划分调度开始,根据传入的最后一个RDD生成的ResultStage,方法会调用getOrCreateParentStages,它是用来获得当前stage依赖的stage,用于调度阶段中创建依赖关系.
   * createResultStage结束后,整个划分调度的依赖关系树就会构建完毕.
@@ -116,33 +112,10 @@ import org.apache.spark.util._
   * 2.4.2 createShuffleMapStage -> getOrCreateParentStages
   *
   * 3 提交调度
-  * 在作业提交调度阶段时,submitStage方法会调用getMissingParentStages来获取finalStage的父调度阶段.
-  * 如果不存在父调度阶段,则该方法也作为 作业运行的入口,调用submitMissingTasks;
-  * 如果存在父调度阶段,把父调度阶段放入waitingStages,等待调度,同时会通过递归向前寻找直到没有parents的root-stage;
-  *
-  * 当入口阶段(root-stage is missing parent stage)运行完成后,相继提交后续的调度阶段.在调度前先判断所依赖的调度阶段的运行结果是否可用(是否运行成功),
-  * 如果运行不成功,则尝试提交调度不可用的父调度阶段.如果可用,则提交当前调度阶段运行.
-  * 对于调度阶段是否可用的判断,由ShuffleMapTask完成时进行,DAGScheduler会检查所以的任务是否都完成.
-  * 如果运行不成功,则重新提交调度阶段,如果运行成功,则扫描等待运行列表,检查其父调度阶段是否存在为完成,如果不存在则表明已经运行就绪,可以生成运行实例提交运行.
-  * 检查的具体实现方法是handleTaskCompletion,当业务完成时,Executor#run方法会发送消息给DAGScheduler,DAGSchedulerEventLoop接收到CompletionEvent消息后,
-  * 便会调用handleTaskCompletion方法.
-  *
-  * -入口函数:
-  * submitStage
-  *
-  * -方法调用流程:
-  * submitStage -> getMissingParentStages ->
-  * 1. submitMissingTasks
-  * 2. submitStage
   *
   *
   * 4 提交任务
   *
-  * -入口函数:
-  * submitMissingTasks
-  *
-  * -方法调用流程:
-  * submitMissingTasks
   *
   * 5 执行任务
   *
@@ -387,10 +360,9 @@ class DAGScheduler(
   def taskSetFailed(taskSet: TaskSet, reason: String, exception: Option[Throwable]): Unit = {
     eventProcessLoop.post(TaskSetFailed(taskSet, reason, exception))
   }
-  /**
-    * 获取rdd的位置信息.
+  /** 获取rdd的位置信息.
     * 如果存在cache中,则直接返回;
-    * 如果不在cacahe中,并且StorageLevel !=NONE,即存在于其他executor的内存或disk或其他载体上,不需要通过BlockManagerMaster通讯拉取
+    * 如果不在cacahe中,并且StorageLevel !=NONE,即存在于其他executor的内存或disk或其他载体上,通过BlockManagerMaster通讯拉取
     * */
   private[scheduler]
   def getCacheLocs(rdd: RDD[_]): IndexedSeq[Seq[TaskLocation]] = cacheLocs.synchronized {
@@ -531,9 +503,7 @@ class DAGScheduler(
   }
 
   /** Find ancestor(祖先) shuffle dependencies that are not registered in shuffleToMapStage yet */
-  /**
-    * RDD通过依赖关系向前遍历寻找祖先的shuffle依赖,其未在shuffleToMapStage里面注册过.
-    *
+  /** 找到rdd祖先的shuffle依赖,其未在shuffleToMapStage里面注册过.查找过程通过递归遍历栈查找,但会手动维护避免栈益出
     * */
   private def getMissingAncestorShuffleDependencies(
       rdd: RDD[_]): Stack[ShuffleDependency[_, _, _]] = {
@@ -608,17 +578,20 @@ class DAGScheduler(
     def visit(rdd: RDD[_]) {// 广度优先遍历方式
       if (!visited(rdd)) {
         visited += rdd
-        //RDD不在BlockManager上.
         val rddHasUncachedPartitions = getCacheLocs(rdd).contains(Nil)
         if (rddHasUncachedPartitions) {
           for (dep <- rdd.dependencies) {
             dep match {
               case shufDep: ShuffleDependency[_, _, _] =>
+                /** 所依赖的RDD操作类型是 ShuffleDependency,需要划分shuffle map stage 调度阶段,
+                  * 以getOrCreateShuffleMapStage为入口,向前遍历调度划分.
+                  * */
                 val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
                 if (!mapStage.isAvailable) {
                   missing += mapStage
                 }
               case narrowDep: NarrowDependency[_] =>
+                /** 所依赖的RDD操作类型非 ShuffleDependency,该rdd压入waitingForVisit等待访问堆栈 */
                 waitingForVisit.push(narrowDep.rdd)
             }
           }
@@ -1088,34 +1061,18 @@ class DAGScheduler(
   }
 
   /** Submits stage, but first recursively submits any missing parents. */
-  /**
-    * 提交stage,但首先 递归提交 向前寻找直到没有parents的root-stage,然后调用submitMissingTasks 提交stage 的Task
-    * 该方法是提交调度阶段.
-    * 在作业提交调度阶段时,submitStage方法会调用getMissingParentStages来获取finalStage的父调度阶段.
-    * 如果不存在父调度阶段,则该方法也作为 作业运行的入口,调用submitMissingTasks;
-    * 如果存在父调度阶段,把父调度阶段放入waitingStages,等待调度,同时会通过递归向前寻找直到没有parents的root-stage
-    *
-    * 当入口阶段(root-stage is missing parent stage)运行完成后,相继提交后续的调度阶段.在调度前先判断所依赖的调度阶段的运行结果是否可用(是否运行成功),
-    * 如果运行不成功,则尝试提交调度不可用的父调度阶段.如果可用,则提交当前调度阶段运行.
-    * 对于调度阶段是否可用的判断,由ShuffleMapTask完成时进行,DAGScheduler会检查所以的任务是否都完成.
-    * 如果运行不成功,则重新提交调度阶段,如果运行成功,则扫描等待运行列表,检查其父调度阶段是否存在为完成,如果不存在则表明已经运行就绪,可以生成运行实例提交运行.
-    * 检查的具体实现方法是handleTaskCompletion,当业务完成时,Executor#run方法会发送消息给DAGScheduler,DAGSchedulerEventLoop接收到CompletionEvent消息后,
-    * 便会调用handleTaskCompletion方法.
-    * */
+  /** 提交stage,但首先 递归提交 直到没有parents的root-stage */
   private def submitStage(stage: Stage) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logDebug("submitStage(" + stage + ")")
       if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
-        //获取该阶段的父调度阶段,获取方法没有使用stage的依赖关系,而是使用rdd的依赖关系向前遍历寻找看是否存在shuffle操作.
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logDebug("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
-          //不存在父调度阶段,作业直接提交执行.
           submitMissingTasks(stage, jobId.get)
         } else {
-          //存在父调度阶段,把该阶段放入等待列表中,并递归向前寻找父调度阶段,直接找到开始的调度阶段.
           for (parent <- missing) {
             submitStage(parent)
           }
@@ -1128,25 +1085,18 @@ class DAGScheduler(
   }
 
   /** Called when stage's parents are available and we can now do its task. */
-  /**
-    * 提交任务入口.
-    * 当stage的parent调度阶段运行完成结果有效时,可以用这个方法提交未计算的任务.
-    * */
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
-    //清空pendingTasks，便于记录需要计算的任务
     stage.pendingPartitions.clear()
 
     // First figure out the indexes of partition ids to compute.
-    // 首先计算出需要被计算的Partition Id(亦即是未被计算过的partition).
     val partitionsToCompute: Seq[Int] = stage.findMissingPartitions()
 
     // Use the scheduling pool, job group, description, etc. from an ActiveJob associated
     // with this Stage
     val properties = jobIdToActiveJob(jobId).properties
 
-    //将当前Stage加入运行中的Stage集合（runningStages:HashSet[Stage]）中
     runningStages += stage
     // SparkListenerStageSubmitted should be posted before testing whether tasks are
     // serializable. If tasks are not serializable, a SparkListenerStageCompleted event
