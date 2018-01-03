@@ -136,6 +136,10 @@ import org.apache.spark.util._
   * 2. submitStage
   *
   * 4 提交任务
+  * 当调度任务提交运行后,在DAGScheduler#submitMissingTasks方法中,会根据调度阶段partition个数拆分对应的任务个数.
+  * 这些任务组成一个任务集合提交到TaskShedulerImpl中进行处理.对于ResultStage生产ResultTask,对于ShuffleMapStage则生成ShuffleMapTask.
+  * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition)
+  *
   *
   * -入口函数:
   * submitMissingTasks
@@ -1132,6 +1136,9 @@ class DAGScheduler(
   /**
     * 提交任务入口.
     * 当stage的parent调度阶段运行完成结果有效时,可以用这个方法提交未计算的任务.
+    * 当调度任务提交运行后,在DAGScheduler#submitMissingTasks方法中,会根据调度阶段partition个数拆分对应的任务个数.
+    * 这些任务组成一个任务集合提交到TaskShedulerImpl中进行处理.对于ResultStage生产ResultTask,对于ShuffleMapStage则生成ShuffleMapTask.
+    * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition)
     * */
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
@@ -1184,13 +1191,16 @@ class DAGScheduler(
 
     stage.makeNewStageAttempt(partitionsToCompute.size, taskIdToLocations.values.toSeq)
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
-
+    // 为运行Task准备所需要的相关信息进行序列化包括(rdd, shuffleDep)对应ShuffleMapStage 或则 (stage.rdd, stage.func)对应ResultStage,
+    // 然后广播到每个executors,executor里面的task会对这些信息进行反序列化然后使用这些必要信息.
+    // 此外,这些信息会被保存,以避免多次序列化操作
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
     // Broadcasted binary for the task, used to dispatch tasks to executors. Note that we broadcast
     // the serialized copy of the RDD and for each task we will deserialize it, which means each
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+
     var taskBinary: Broadcast[Array[Byte]] = null
     try {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
@@ -1217,9 +1227,10 @@ class DAGScheduler(
         runningStages -= stage
         return
     }
-
+    // 根据不同类型的stage生成不同的Task
     val tasks: Seq[Task[_]] = try {
       stage match {
+        //对于ShuffleMapStage则生成ShuffleMapTask任务
         case stage: ShuffleMapStage =>
           partitionsToCompute.map { id =>
             val locs = taskIdToLocations(id)
@@ -1228,7 +1239,7 @@ class DAGScheduler(
               taskBinary, part, locs, stage.latestInfo.taskMetrics, properties, Option(jobId),
               Option(sc.applicationId), sc.applicationAttemptId)
           }
-
+        //对于ResultStage则生成ResultTask任务
         case stage: ResultStage =>
           partitionsToCompute.map { id =>
             val p: Int = stage.partitions(id)
@@ -1250,6 +1261,7 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
+      //把这些任务以任务集的方式提交到taskScheduler
       taskScheduler.submitTasks(new TaskSet(
         tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
