@@ -1143,7 +1143,18 @@ class DAGScheduler(
     * 当stage的parent调度阶段运行完成结果有效时,可以用这个方法提交未计算的任务.
     * 当调度任务提交运行后,在DAGScheduler#submitMissingTasks方法中,会根据调度阶段partition个数拆分对应的任务个数.
     * 这些任务组成一个任务集合提交到TaskShedulerImpl中进行处理.对于ResultStage生产ResultTask,对于ShuffleMapStage则生成ShuffleMapTask.
-    * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition)
+    * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition).
+    *
+    * 为运行Task准备所需要的相关信息进行序列化包括(rdd, shuffleDep)对应ShuffleMapStage 或则 (stage.rdd, stage.func)对应ResultStage,
+    * 然后广播到每个executors,executor里面的task会对这些信息进行反序列化然后使用这些必要信息.
+    * 此外,这些信息会被保存,以避免多次序列化操作.
+    *
+    * 根据不同类型的stage生成不同的Task.
+    *
+    * TaskSchedulerImpl收到发送过来的任务集时,在submitTasks方法中构建一个TaskSetManager的实例,用于管理这个任务集合的生命周期,而这个
+    * TaskSetManager会放入系统的调度池中,根据系统设置的调度算法进行调度.
+    *
+    *
     * */
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
@@ -1267,6 +1278,10 @@ class DAGScheduler(
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
       //把这些任务以任务集的方式提交到taskScheduler
+      /**
+        * TaskSchedulerImpl收到发送过来的任务集时,在submitTasks方法中构建一个TaskSetManager的实例,用于管理这个任务集合的生命周期,而这个
+        * TaskSetManager会放入系统的调度池中,根据系统设置的调度算法进行调度.
+        * */
       taskScheduler.submitTasks(new TaskSet(
         tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
