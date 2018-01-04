@@ -75,6 +75,9 @@ import org.apache.spark.util.{RpcUtils, SerializableBuffer, ThreadUtils, Utils}
   *
   * 2.reviveOffers()方法的实现
   * 直接调用了makeOffers()方法,得到一批可执行的任务描述,调用launchTasks.
+  * reviveOffers方法回向DriverEndPoint终端点发送消息,DriverEndPoint接收消息后调用其makeOffers方法.
+  * makeOffers方法会先获取集群中可用的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源,最后提交到launchTask方法中.
+  *
   *
   * 3.launchTasks(tasks: Seq[Seq[TaskDescription]])方法
   * 遍历每个task描述,序列化成二进制,然后发送给每个对应的executor这个任务信息
@@ -282,6 +285,12 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         val executorData = executorDataMap(executorId)
         val workOffers = IndexedSeq(
           new WorkerOffer(executorId, executorData.executorHost, executorData.freeCores))
+        /**
+          * 1 scheduler.resourceOffers(workOffers)方法中非常重要的步骤,资源分配.在资源分配过程中根据调度策略对TaskSetManager
+          * 进行排序,然后依次对这些TaskSetManager按照就近原则分配资源,按照PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY;
+          * 2 分配好资源的任务提交到CoarseGrainedSchedulerBackend#launchTasks方法中,在该方法中会把任务一个个发送到Worker节点上的
+          * CoarseGrainedExecutorBackend,然后通过内部Executor来执行任务(CoarseGrainedSchedulerBackend 与 Executor一一对应).
+          * */
         launchTasks(scheduler.resourceOffers(workOffers))
       }
     }
