@@ -22,7 +22,28 @@ import java.util.concurrent.ConcurrentHashMap
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
-
+/**
+  * 基于sort的shuffle,进来的记录会依据它们的目标partition id进行排序,然后写入到单个map out 文件中.
+  * Reducers连续提取这些文件(map output file)然后以进行读取.万一map output数据量太大,sorted 的部分子集合会被溢出到磁盘,
+  * 溢出到磁盘的中间文件可能会非常,但最后会对这些中间文件进行合并,一个task对应一个.
+  * 基于sort的shuffle,对于产生对map output file有两种不同对写路径:
+  * -序列化排序,当以下三种条件中触发一条便会使用:
+  * 1 shuffle dependency 没有指定聚合和输出输出排序;
+  * 2 shuffle 序列化支持被序列化值对从定向/迁移;
+  * 3 shuffle操作产生小于16777216个输出分区;
+  *
+  * -反序列化排序:被用于处理所有对cases.
+  *
+  * -----------------------
+  * Serialized sorting mode
+  * -----------------------
+  * 在序列化排序模式中,进来到记录一旦经过传递到shuffle writer会被序列化,并在排序过程中以序列化的形式进行缓冲.
+  * write path有几种优化:
+  *   - 排序操作是在二进制而不是Java objects,这会减少内存到开销和GC消耗;
+  *   - 它使用专门的缓存高效排序器进行排序.压缩记录指针和partition IDs的数组;
+  *   - 溢出合并过程在序列化记录属于同一分区块、不需要反序列化记录;
+  *   - 当溢出压缩时,支持及联压缩数据.溢出合并简单的把序列化和溢出分区合并减少最终的输出的分区.这允许高效的数据复制方法,就像nio的transferTo,避免反序列化和copy带来的buffer开销;
+  * */
 /**
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
  * written to a single map output file. Reducers fetch contiguous regions of this file in order to
@@ -77,6 +98,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   /**
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
    */
+  /** shuffle id map产生输出数的映射*/
   private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()
 
   override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)
@@ -174,6 +196,7 @@ private[spark] object SortShuffleManager extends Logging {
    * buffering map outputs in a serialized form. This is an extreme defensive programming measure,
    * since it's extremely unlikely that a single shuffle produces over 16 million output partitions.
    * */
+  /** 当缓存 map output时SortShuffleManager所支持的shuffle output 分区的最大值.这是一种极端的编码保护,因为单个shuffle产生1600万个分区是极不可能的. */
   val MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE =
     PackedRecordPointer.MAXIMUM_PARTITION_ID + 1
 

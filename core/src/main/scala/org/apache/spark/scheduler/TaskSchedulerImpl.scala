@@ -209,6 +209,7 @@ private[spark] class TaskSchedulerImpl(
       }
       hasReceivedTask = true
     }
+    //调用后台调度器 SchedulerBackend#reviveOffers方法分配资源并运行.
     backend.reviveOffers()
   }
 

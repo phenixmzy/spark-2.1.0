@@ -140,12 +140,17 @@ import org.apache.spark.util._
   * 这些任务组成一个任务集合提交到TaskShedulerImpl中进行处理.对于ResultStage生产ResultTask,对于ShuffleMapStage则生成ShuffleMapTask.
   * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition)
   *
+  * 当TaskSheduler(TaskShedulerImpl)收到发送过来的任务集后,就会调用submitTasks,在submitTasks方法中调用createTaskSetManager,创建TaskSetManager.
+  * TaskSetManager是用于管理任务集的生命周期,会被系统放入任务调度池里面,根据系统设置的调度算法进行调度.
+  * 然后再在submitTasks方法中调用后台调度器(CoarseGrainedSchedulerBackend) SchedulerBackend#reviveOffers方法分配资源并运行.
+  * 在CoarseGrainedSchedulerBackend#reviveOffers方法中,
+  *
   *
   * -入口函数:
   * submitMissingTasks
   *
   * -方法调用流程:
-  * submitMissingTasks
+  * submitMissingTasks->TaskShedulerImpl#submitTasks->ShedulerBackend#reviveOffers
   *
   * 5 执行任务
   *
