@@ -261,12 +261,22 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Make fake resource offers on all executors
+    /**
+      * makeOffers会获得集群中的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源(TaskSchedulerImpl#resourceOffers),把分配好资源的Task
+      * 最后提交到launchTask方法中.
+      * */
     private def makeOffers() {
       // Filter out executors under killing
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
       val workOffers = activeExecutors.map { case (id, executorData) =>
         new WorkerOffer(id, executorData.executorHost, executorData.freeCores)
       }.toIndexedSeq
+      /**
+        * 1 scheduler.resourceOffers(workOffers)方法中非常重要的步骤,资源分配.在资源分配过程中根据调度策略对TaskSetManager
+        * 进行排序,然后依次对这些TaskSetManager按照就近原则分配资源,按照PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY;
+        * 2 分配好资源的任务提交到CoarseGrainedSchedulerBackend#launchTasks方法中,在该方法中会把任务一个个发送到Worker节点上的
+        * CoarseGrainedExecutorBackend,然后通过内部Executor来执行任务(CoarseGrainedSchedulerBackend 与 Executor一一对应).
+        * */
       launchTasks(scheduler.resourceOffers(workOffers))
     }
 
