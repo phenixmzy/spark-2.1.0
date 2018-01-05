@@ -259,6 +259,7 @@ private[spark] class Executor(
       startGCTime = computeTotalGcTime()
 
       try {
+        //对任务运行时所需要的的文件,Jar包,代码等反序列
         val (taskFiles, taskJars, taskProps, taskBytes) =
           Task.deserializeWithDependencies(serializedTask)
 
@@ -285,6 +286,7 @@ private[spark] class Executor(
         env.mapOutputTracker.updateEpoch(task.epoch)
 
         // Run the actual task and measure its runtime.
+        //调用Task的runTask方法,由于Task本身是一个抽象类,具体的runTask方法由它的两个子类ShuffleMapTask和ResultTask来实现的.
         taskStart = System.currentTimeMillis()
         taskStartCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime

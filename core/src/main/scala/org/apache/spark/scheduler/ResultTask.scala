@@ -68,7 +68,10 @@ private[spark] class ResultTask[T, U](
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
   }
-
+　
+  /**
+    * 对于ResultTask#runTask而言,它最终返回的是func函数的计算结果.
+    * */
   override def runTask(context: TaskContext): U = {
     // Deserialize the RDD and the func using the broadcast variables.
     val threadMXBean = ManagementFactory.getThreadMXBean
@@ -83,7 +86,7 @@ private[spark] class ResultTask[T, U](
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
-
+    //ResultTask的runTask方法返回的是计算结果
     func(context, rdd.iterator(partition, context))
   }
 

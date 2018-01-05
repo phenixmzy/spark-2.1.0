@@ -180,6 +180,7 @@ import org.apache.spark.util._
   * 当CoarseGrainedExecutorBackend接收到LaunchTask消息后,就会调用Executor#launchTask方法执行任务.
   * Executor#launchTask在内部会创建一个TaskRunner来封装Task,Task管理着运行时的细节,然后再把TaskRunner放入threadPool中执行.
   * TaskRunner是一个Runnable,run方法里面会先对Task本身以及依赖对jar文件进行反序列化,然后调用Task反序列化后的runTask方法.
+  * Task本身是一个抽象类,具体的runTask方法由它的两个子类ShuffleMapTask和ResultTask来实现的.
   *
   * -入口函数:
   * CoarseGrainedSchedulerBackend#launchTasks
@@ -198,8 +199,19 @@ import org.apache.spark.util._
   * Executor#launchTasks->
   * 创建一个TaskRunner来封装Task,并把TaskRunner放入线程池中执行
   *
-  * TaskRunner#run
+  * TaskRunner#run->
+  * TaskRunner是一个Runnable,run方法里面会先对Task本身以及依赖对jar文件进行反序列化,然后调用Task反序列化后的runTask方法
   *
+  * Task#runTask
+  * Task本身是一个抽象类,具体的runTask方法由它的两个子类ShuffleMapTask和ResultTask来实现的.
+  *
+  * --ShuffleMapTask
+  * 对于ShuffleMapTask而言,它的计算结果会写到BlockManager之中,最终返回给DAGScheduler的是一个MapStatus对象.该对象中管理了
+  * ShuffleMapTask的运算结果存储到BlockManager里面的相关信息,而不是计算结果本身,这些存储信息将会为下一阶段的任务需要获取的
+  * 输入数据时的依据.
+  *
+  * --ResultTask
+  *  对于ResultTask#runTask而言,它最终返回的是func函数的计算结果.
   *
   *
   * 6 返回结果
