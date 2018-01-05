@@ -279,6 +279,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Make fake resource offers on just one executor
+    /**
+      * makeOffers会获得集群中的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源(TaskSchedulerImpl#resourceOffers),把分配好资源的Task
+      * 最后提交到launchTask方法中.
+      * */
     private def makeOffers(executorId: String) {
       // Filter out executors under killing
       if (executorIsAlive(executorId)) {
@@ -301,6 +305,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Launch tasks returned by a set of resource offers
+    /**
+      * TaskSchedulerImpl#resourceOffers方法返回的分配好资源的任务提交到CoarseGrainedSchedulerBackend#lanuchTasks方法中.
+      * 该方法会把任务(task)一个个发送到Worker节点上的CoarseGrainedSchedulerBackend,然后通过其内部的Executor来执行.
+      * */
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
         val serializedTask = ser.serialize(task)
@@ -323,7 +331,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
           logDebug(s"Launching task ${task.taskId} on executor id: ${task.executorId} hostname: " +
             s"${executorData.executorHost}.")
-
+          //把任务发送到Worker节点上的CoarseGrainedSchedulerBackend,然后通过其内部的Executor来执行.
           executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
         }
       }

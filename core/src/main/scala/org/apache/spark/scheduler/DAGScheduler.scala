@@ -136,21 +136,44 @@ import org.apache.spark.util._
   * 2. submitStage
   *
   * 4 提交任务
+  *
+  * 当stage的parent调度阶段运行完成结果有效时,可以用这个方法提交未计算的任务.
   * 当调度任务提交运行后,在DAGScheduler#submitMissingTasks方法中,会根据调度阶段partition个数拆分对应的任务个数.
   * 这些任务组成一个任务集合提交到TaskShedulerImpl中进行处理.对于ResultStage生产ResultTask,对于ShuffleMapStage则生成ShuffleMapTask.
-  * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition)
+  * 对于每一个任务集包含了对应阶段的所有任务,这些任务处理逻辑完全一样,不同的是对应处理的数据,而这些数据是其对应的数据分片(partition).
   *
-  * 当TaskSheduler(TaskShedulerImpl)收到发送过来的任务集后,就会调用submitTasks,在submitTasks方法中调用createTaskSetManager,创建TaskSetManager.
-  * TaskSetManager是用于管理任务集的生命周期,会被系统放入任务调度池里面,根据系统设置的调度算法进行调度.
-  * 然后再在submitTasks方法中调用后台调度器(CoarseGrainedSchedulerBackend) SchedulerBackend#reviveOffers方法分配资源并运行.
-  * 在CoarseGrainedSchedulerBackend#reviveOffers方法中,
+  * 为运行Task准备所需要的相关信息进行序列化包括(rdd, shuffleDep)对应ShuffleMapStage 或则 (stage.rdd, stage.func)对应ResultStage,
+  * 然后广播到每个executors,executor里面的task会对这些信息进行反序列化然后使用这些必要信息.
+  * 此外,这些信息会被保存,以避免多次序列化操作.
   *
+  * 根据不同类型的stage生成不同的Task.
+  *
+  * TaskSchedulerImpl收到发送过来的任务集时,在submitTasks方法中构建一个TaskSetManager的实例( createTaskSetManager(taskSet, maxTaskFailures)),
+  * 用于管理这个任务集合的生命周期,而这个TaskSetManager会放入系统的调度池中,根据系统设置的调度算法进行调度.
+  * 然后调用后台调度器 (CoarseGrainedSchedulerBackend)SchedulerBackend#reviveOffers方法分配资源并运行,CoarseGrainedSchedulerBackend#reviveOffers方法中,
+  * 会向DriverEndPoint终端点发送消息(driverEndpoint.send(ReviveOffers)),CoarseGrainedSchedulerBackend#receive接收到消息后,会调用makeOffers.
+  * makeOffers会获得集群中的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源(TaskSchedulerImpl#resourceOffers),最后提交到launchTask方法中.
+  *
+  * 在TaskSchedulerImpl#resourceOffers方法中进行非常重要的步骤 - 资源分配.
+  * 在分配的过程中会根据调度策略对TaskSetManager进行排序,然后依次对这些TaskSetManager按照就近原则分配资源(按照顺序为PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY).
+  *
+  * 分配好资源的任务提交到CoarseGrainedSchedulerBackend#lanuchTasks方法中.
+  * 该方法会把任务一个个发送到Worker节点上的CoarseGrainedSchedulerBackend,然后通过其内部的Executor来执行.
   *
   * -入口函数:
   * submitMissingTasks
   *
   * -方法调用流程:
-  * submitMissingTasks->TaskShedulerImpl#submitTasks->ShedulerBackend#reviveOffers
+  * submitMissingTasks->
+  *
+  * TaskShedulerImpl#submitTasks->
+  *
+  * CoarseGrainedSchedulerBackend#reviveOffers->
+  *
+  * CoarseGrainedSchedulerBackend#receive->
+  * CoarseGrainedSchedulerBackend#makeOffer->
+  * 1 TaskSchedulerImpl#resourceOffers->
+  * 2 CoarseGrainedSchedulerBackend#launchTasks
   *
   * 5 执行任务
   *

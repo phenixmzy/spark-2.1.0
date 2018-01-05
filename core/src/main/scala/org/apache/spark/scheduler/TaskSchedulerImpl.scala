@@ -176,6 +176,13 @@ private[spark] class TaskSchedulerImpl(
     waitBackendReady()
   }
 
+  /**
+    * TaskSchedulerImpl收到发送过来的任务集时,在submitTasks方法中构建一个TaskSetManager的实例( createTaskSetManager(taskSet, maxTaskFailures)),
+    * 用于管理这个任务集合的生命周期,而这个TaskSetManager会放入系统的调度池中,根据系统设置的调度算法进行调度.
+    * 然后调用后台调度器 (CoarseGrainedSchedulerBackend)SchedulerBackend#reviveOffers方法分配资源并运行,CoarseGrainedSchedulerBackend#reviveOffers方法中,
+    * 会向DriverEndPoint终端点发送消息(driverEndpoint.send(ReviveOffers)),调用CoarseGrainedSchedulerBackend#receive接收到消息后,会调用makeOffers.
+    * makeOffers会获得集群中的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源,最后提交到launchTask方法中.
+    * */
   override def submitTasks(taskSet: TaskSet) {
     val tasks = taskSet.tasks
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks")
@@ -211,6 +218,11 @@ private[spark] class TaskSchedulerImpl(
       hasReceivedTask = true
     }
     //调用后台调度器 SchedulerBackend#reviveOffers方法分配资源并运行.
+    /**
+      * 调用后台调度器 (CoarseGrainedSchedulerBackend)SchedulerBackend#reviveOffers方法分配资源并运行,CoarseGrainedSchedulerBackend#reviveOffers方法中,
+      * 会向DriverEndPoint终端点发送消息(driverEndpoint.send(ReviveOffers)),CoarseGrainedSchedulerBackend#receive接收到消息后,会调用makeOffers.
+      * makeOffers会获得集群中的Executor,然后发送到TaskSchedulerImpl中进行对任务集的任务分配运行资源(TaskSchedulerImpl#resourceOffers),最后提交到launchTask方法中.
+      * */
     backend.reviveOffers()
   }
 
@@ -298,6 +310,9 @@ private[spark] class TaskSchedulerImpl(
    * that tasks are balanced across the cluster.
    */
   /**
+    * 在TaskSchedulerImpl#resourceOffers方法中进行非常重要的步骤 - 资源分配.
+    * 在分配的过程中会根据调度策略对TaskSetManager进行排序,然后依次对这些TaskSetManager按照就近原则分配资源(按照顺序为PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY).
+    *
     * 这是非常重要的一个方法,调用者是SchedulerBacnend(CoarseGrainedShedulerBackend.makeOffers->launchTasks(scheduler.resourceOffers(workOffers))),
     * 用途是底层资源SchedulerBackend把空余的workers资源交给TaskScheduler,让其根据调度策略为排队的任务分配合理的cpu和内存资源,然后把任务描述列表传回给SchedulerBackend
     * 1. 从worker offers里,搜集executor和host的对应关系、active executors、机架信息等等;
