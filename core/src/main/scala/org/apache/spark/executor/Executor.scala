@@ -137,7 +137,14 @@ private[spark] class Executor(
   private var heartbeatFailures = 0
 
   startDriverHeartbeater()
-
+  /**
+    * 当CoarseGrainedExecutorBackend接收到LaunchTask消息后,就会调用Executor#launchTask方法执行任务.
+    * Executor#launchTask在内部会创建一个TaskRunner来封装Task,Task管理着运行时的细节,然后再把TaskRunner放入
+    * threadPool中执行.
+    * TaskRunner是一个Runnable,run方法里面会先对Task本身以及依赖对jar文件进行反序列化,然后调用Task反序列化后的runTask方法.
+    *
+    *
+    * */
   def launchTask(
       context: ExecutorBackend,
       taskId: Long,
@@ -236,6 +243,7 @@ private[spark] class Executor(
 
     override def run(): Unit = {
       val threadMXBean = ManagementFactory.getThreadMXBean
+      // 创建taskMemoryManager实例,用于Task运行期间对内存管理
       val taskMemoryManager = new TaskMemoryManager(env.memoryManager, taskId)
       val deserializeStartTime = System.currentTimeMillis()
       val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
@@ -244,6 +252,7 @@ private[spark] class Executor(
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
       logInfo(s"Running $taskName (TID $taskId)")
+      //向Driver发送任务开始运行消息
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStart: Long = 0
       var taskStartCpu: Long = 0
