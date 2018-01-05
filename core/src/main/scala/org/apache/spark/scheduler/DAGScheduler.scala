@@ -171,11 +171,35 @@ import org.apache.spark.util._
   * CoarseGrainedSchedulerBackend#reviveOffers->
   *
   * CoarseGrainedSchedulerBackend#receive->
+  *
   * CoarseGrainedSchedulerBackend#makeOffer->
   * 1 TaskSchedulerImpl#resourceOffers->
-  * 2 CoarseGrainedSchedulerBackend#launchTasks
+  * 2 CoarseGrainedSchedulerBackend#launchTasks->CoarseGrainedExecutorBackend#launchTasks
   *
   * 5 执行任务
+  * 当CoarseGrainedExecutorBackend接收到LaunchTask消息后,就会调用Executor#launchTask方法执行任务.
+  * Executor#launchTask在内部会创建一个TaskRunner来封装Task,Task管理着运行时的细节,然后再把TaskRunner放入threadPool中执行.
+  * TaskRunner是一个Runnable,run方法里面会先对Task本身以及依赖对jar文件进行反序列化,然后调用Task反序列化后的runTask方法.
+  *
+  * -入口函数:
+  * CoarseGrainedSchedulerBackend#launchTasks
+  *
+  *
+  * -方法调用流程:
+  * CoarseGrainedSchedulerBackend#launchTasks->
+  * TaskSchedulerImpl#resourceOffers方法返回的分配好资源的任务提交到CoarseGrainedSchedulerBackend#lanuchTasks方法中.
+  * 该方法会把任务(task-已获得分配资源)一个个发送到Worker节点上的CoarseGrainedExecutorBackend,然后通过其内部的Executor来执行.
+  * 为向CoarseGrainedExecutorBackend发送消息,方法会调用executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
+  * executorData.executorEndpoint其实为CoarseGrainedExecutorBackend
+  *
+  * CoarseGrainedExecutorBackend#receive->
+  * CoarseGrainedExecutorBackend接收到LaunchTask消息后,调用executor.launchTask
+  *
+  * Executor#launchTasks->
+  * 创建一个TaskRunner来封装Task,并把TaskRunner放入线程池中执行
+  *
+  * TaskRunner#run
+  *
   *
   *
   * 6 返回结果
