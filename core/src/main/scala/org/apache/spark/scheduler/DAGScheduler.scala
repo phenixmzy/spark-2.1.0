@@ -158,7 +158,7 @@ import org.apache.spark.util._
   * 在分配的过程中会根据调度策略对TaskSetManager进行排序,然后依次对这些TaskSetManager按照就近原则分配资源(按照顺序为PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY).
   *
   * 分配好资源的任务提交到CoarseGrainedSchedulerBackend#lanuchTasks方法中.
-  * 该方法会把任务一个个发送到Worker节点上的CoarseGrainedSchedulerBackend,然后通过其内部的Executor来执行.
+  * 该方法会把任务一个个发送到Worker节点上的CoarseGrainedExecutorBackend,然后通过其内部的Executor来执行.
   *
   * -入口函数:
   * submitMissingTasks
