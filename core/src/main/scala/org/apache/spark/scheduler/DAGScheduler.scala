@@ -116,6 +116,9 @@ import org.apache.spark.util._
   * 2.4.2 createShuffleMapStage -> getOrCreateParentStages
   *
   * 3 提交调度
+  * 在DAGScheduler的handleJobSubmitted方法中,生成finalStage的同时建立起所有调度阶段的依赖关系,然后通过finalStage生成一个作业实例,
+  * 该作业实例中按照提交调度阶段进行执行,在执行过程中监听总线获取作业,阶段的执行情况.
+  *
   * 在作业提交调度阶段时,submitStage方法会调用getMissingParentStages来获取finalStage的父调度阶段.
   * 如果不存在父调度阶段,则该方法也作为 作业运行的入口,调用submitMissingTasks;
   * 如果存在父调度阶段,把父调度阶段放入waitingStages,等待调度,同时会通过递归向前寻找直到没有parents的root-stage;
