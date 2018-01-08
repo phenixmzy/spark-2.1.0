@@ -380,7 +380,12 @@ private[spark] class Executor(
             serializedDirectResult
           }
         }
-
+        //任务执行完毕后想DriverEndPoint(位于CoarseGrainedExecutorBackend)发送消息.然后DriverEndPoint会再把消息
+        //转给TaskSchedulerImpl#statusUpdate处理.
+        //如果类型时TaskState.FINISHED,那么TaskResultGetter的enqueueSuccessfulTask方法进行处理.
+        //enqueueSuccessfulTask方法比较简单,
+        // 如果IndirectTaskResult则通过blockId来获取(sparkEnv.blockManager.getRemoteBytes(blockId));
+        // 如果是DirectTaskResult则无需远程获取.
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 
       } catch {
