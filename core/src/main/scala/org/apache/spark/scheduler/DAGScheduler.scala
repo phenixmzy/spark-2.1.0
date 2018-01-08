@@ -53,40 +53,62 @@ import org.apache.spark.util._
   * 如果是窄依赖，在每个stage内像map，filter等流水线组成一组task，
   * 如果是shuffle宽依赖，则要求多个stage（一份写入map out的文件，被其他多个读取这些文件，以此为栏栅）
   *
-  *此外提供dag调度，dag调度基于当前内存状态决定每个task运行的首选位置，传给底层的task调度。
-  *与此同时，还要处理shuffle输出文件的丢失，这种情况old的stage可能需要resubmit。如果stage失败并非由shuffle文件丢失引起，每个stage会重试num times。
+  *此外提供dag调度,dag调度基于当前内存状态决定每个task运行的首选位置,传给底层的task调度.
+  *与此同时,还要处理shuffle输出文件的丢失,这种情况old的stage可能需要resubmit.如果stage失败并非由shuffle文件丢失引起,每个stage会重试num times.
   *
   * -Stages
-  * 一个task集合，其是计算jobs里面的中间结果。每个taks计算同一个rdd的不同partition。stage以特定的shuffle为边界，并且等待前一个执行完成才能执行下一个。
-  * stage有两种类型：ResultStage和ShuffleMapStage。
-  * ResultStage作为执行action最后stage；ShuffleMapStage则是shuffle处理过程中map点输出文件。
-  * 如果这些job重用相同点rdd,stage通常会被多个jobs共享。
+  * 一个task集合，其是计算jobs里面的中间结果.每个taks计算同一个rdd的不同partition.stage以特定的shuffle为边界,并且等待前一个执行完成才能执行下一个.
+  * stage有两种类型：ResultStage和ShuffleMapStage.
+  * ResultStage作为执行action最后stage；ShuffleMapStage则是shuffle处理过程中map点输出文件.
+  * 如果这些job重用相同点rdd,stage通常会被多个jobs共享.
   *
   * -Task
-  * Task是work的基本单位，每个Task会发送到相应的机器上
+  * Task是work的基本单位,每个Task会发送到相应的机器上.
   *
   * －Cache tracking
-  * DAGScheduler能计算出哪些rdd被缓存避免重新计算，而且记得哪些stage输出shuffle map file避免map端重做shuffle。
+  * DAGScheduler能计算出哪些rdd被缓存避免重新计算,而且记得哪些stage输出shuffle map file避免map端重做shuffle.
   *
   *－Preferred locations
-  * DAGScheduler基于rdd首选位置，cache，shuffle data 计算出stage里面每个task的运行位置。
+  * DAGScheduler基于rdd首选位置,cache/shuffle data 计算出stage里面每个task的运行位置.
   *
   *- Cleanup
-  * 当依赖于它们的运行作业完成时，所有数据结构将被清除，以防止长时间运行的application内存泄露。
+  * 当依赖于它们的运行作业完成时,所有数据结构将被清除,以防止长时间运行的application内存泄露.
   *
   *
-  * 为了恢复失败的task，相同的stage可能需要被运行多次，它被称为attempts。
-  * 如果TaskScheduler汇报task失败是应为在前一个stage的map out file已经丢失，DAGScheduler重新提交丢失的stage。
-  * 这是通过completionEvent与FetchFailed 或者ExecutorLost event来检测。DAGScheduler将会等待很短的时间去查看是否有其他node或者task失败，
-  * 然后为lost stage重新提交TaskSet。stage会计算失去的task。
-  * 作为这个过程的一部分，我们可能还必须为old(finised)stages 创建stage对象，它是我们之前清理过的stage 对象.
-  * 由于就的stage的attempt可能仍然在running，所以必须小心map任何事件到正确的stage 对.
+  * 为了恢复失败的task,相同的stage可能需要被运行多次,它被称为attempts.
+  * 如果TaskScheduler汇报task失败是因为在前一个stage的map out file已经丢失,DAGScheduler重新提交丢失的stage.
+  * 这是通过completionEvent与FetchFailed 或者ExecutorLost event来检测.DAGScheduler将会等待很短的时间去查看是否有其他node或者task失败，
+  * 然后为lost stage重新提交TaskSet.stage会计算失去的task.
+  * 作为这个过程的一部分,我们可能还必须为old(finised)stages 创建stage对象,它是我们之前清理过的stage 对象.
+  * 由于就的stage的attempt可能仍然在running,所以必须小心map任何事件到正确的stage 对.
   *
-  * 所有的数据结构在job结束是会清理数据避免无限期积累数据，特别是在长时间运行的程序。
+  * 所有的数据结构在job结束是会清理数据避免无限期积累数据,特别是在长时间运行的程序.
   *
   * 作业执行一共分为六个阶段:
   * 1 作业提交(SparkContext#runJob)
-  * 当用户的app运行触发了RDD的Action操作时,就会调用SparkContext#runJob执行 作业提交
+  * 当用户的app运行触发了RDD的Action操作时,就会调用SparkContext#runJob执行 作业提交,这个提交是在RDD内部隐性调用的,对用户来说不需要显性提交作业.
+  * 对于RDD来说,它们会根据彼此之间的依赖关系形成一个dag,然后把这个dag交给DAGScheduler来处理.
+  * SparkContext#runJob经过几次调用后,会进入DAGScheduler#runJob方法.
+  * 在DAGScheduler内部会进行一系列调用方法,runJob->submitJob来提交作业,这里会发生堵塞.直到作业完成或失败返回结果.
+  * 然后在submitJob里面创建JobWriter对象,借助内部消息处理,通过发送JobSubmitted事件把这个对象发送到DAGSchedulerEventProcessLoop,
+  * 通过OnReceive方法接收并处理事件,调用handleJobSubmitted开始进行下一阶段(划分阶段).
+  *
+  * -入口函数:
+  * DAGScheduler#runJob
+  *
+  * -方法调用流程如下:
+  * DAGScheduler#runJob->
+  *
+  * DAGScheduler#submitJob->
+  * 创建JobWriter对象,借助内部消息处理,通过发送JobSubmitted事件把这个对象发送到DAGSchedulerEventProcessLoop,
+  * 通过OnReceive方法接收并处理事件
+  *
+  * DAGSchedulerEventProcessLoop#OnReceive->
+  * 调用handleJobSubmitted开始进行下一阶段(划分阶段)
+  *
+  * DAGScheduler#handleJobSubmitted
+  * 开始进行下一阶段(划分阶段)
+  *
   *
   * 2 划分调度(DAGScheduler#handleJobSubmitted)
   * Spark调度阶段的划分是由DAGScheduler实现的,DAGScheduler会从最后一个RDD出发使用广度优先遍历整个依赖树,从而划分调度阶段.
