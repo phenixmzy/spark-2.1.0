@@ -129,13 +129,15 @@ import org.apache.spark.util._
   *
   * 2.3 getShuffleDependencies ->
   * 该方法只返回该RDD所有的直接父shuffle依赖,不会返回远房祖先的shuffle依赖.因此,在划分阶段起初,该方只是根据最后一个RDD获取其上一级的shuffle依赖.
+  * 这个方法只是根据RDD本身,获取其拥有的依赖,而其依赖关系并非保存在内存中,并且不负责建立依赖关系的DAG.
   *
   * 2.4 getOrCreateShuffleMapStage ->
   * 通过调用getMissingAncestorShuffleDependencies获得该传入RDD的所有祖先shuffle依赖,
   * 然后向前遍历所有祖先依赖,创建对应的shuffle map stage.
+  * 该方法完成时,会使stage之间的依赖关系逐渐形成DAG
   *
   * 2.4.1 getMissingAncestorShuffleDependencies
-  * 2.4.2 createShuffleMapStage -> getOrCreateParentStages
+  * 2.4.2 createShuffleMapStage(创建ShuffleMapStage,并进行相应的存储维护) -> getOrCreateParentStages
   *
   * 3 提交调度
   * 在DAGScheduler的handleJobSubmitted方法中,生成finalStage的同时建立起所有调度阶段的依赖关系,然后通过finalStage生成一个作业实例,
@@ -523,7 +525,8 @@ class DAGScheduler(
    * addition to any missing ancestor(祖先／原型) shuffle map stages.
    */
   /** 该方法获得一个shuffle map stage.如果shuffleIdToMapStage中存在,则从其获取;
-    * 如果不存在,则从祖先shuffle map stages(dependencies)创建
+    * 如果不存在,则从祖先shuffle map stages(dependencies)创建.
+    * finalStage会通过这个方法最终把整个dag建立.
     * */
   private def getOrCreateShuffleMapStage(
       shuffleDep: ShuffleDependency[_, _, _],
@@ -673,6 +676,7 @@ class DAGScheduler(
   /** 该方法只返回该RDD所有的直接父shuffle依赖,不会返回远房祖先的shuffle依赖;
     * 如果是narrowDep会一直往前遍历,直到出现的shuffle依赖为直接的父shuffle依赖.
     * 比如C Shuffle依赖 B, 而B Shuffle依赖 A,则该方法只返回B,不会返回A
+    * 这个方法只是根据RDD本身,获取其拥有的依赖,而其依赖关系并非保存在内存中,并且不负责建立依赖关系的DAG.
     * */
   private[scheduler] def getShuffleDependencies(
       rdd: RDD[_]): HashSet[ShuffleDependency[_, _, _]] = {
