@@ -360,6 +360,7 @@ private[spark] class Executor(
 
         // directSend = sending directly back to the driver
         val serializedResult: ByteBuffer = {
+          //返回结果大于1GB,直接扔掉;[1GB,128MB]存入BlockManager;否则直接发送Driver端.
           if (maxResultSize > 0 && resultSize > maxResultSize) {
             logWarning(s"Finished $taskName (TID $taskId). Result is larger than maxResultSize " +
               s"(${Utils.bytesToString(resultSize)} > ${Utils.bytesToString(maxResultSize)}), " +
