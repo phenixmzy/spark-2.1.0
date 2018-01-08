@@ -240,6 +240,13 @@ import org.apache.spark.util._
   *
   *
   * 6 返回结果
+  * 对于Executor的计算结果,会根据结果的大小有不同的策略.
+  * 1)生成结果大小在(正无穷,1GB):结果直接扔掉,该配置项可以通过spark.driver.maxResultSize进行设置;
+  * 2)生成结果大小存在[1GB,128MB-200KB]:如果生成的结果大于等于(128MB-200KB)时,会把该结果以taskId为编号存入到BlockManager中,
+  * 然后把该编号通过Netty发送给Driver终端点,该阀值是Netty传输的最大值spark.rpc.message.maxSize(default:128MB)和Netty预留的空间
+  * reservedSizeBytes(200KB)差值.
+  * 3)生成结果大小在(128MB-200KB,0):通过Netty直接发送到Driver终端点.
+  *
   *
   */
 
