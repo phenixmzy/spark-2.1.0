@@ -48,6 +48,7 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
  *                        task set will be aborted
  */
 /**
+  * 在任务分配中,TaskSetManager是核心对象.
   * 用于管理任务集的生命周期,会被系统放入任务调度池里面,根据系统设置的调度算法进行调度.
   * 在DAGScheduler向TaskScheduler提交了taskSet之后,TaskSchedulerImpl 会为每个taskSet创建一个TaskSetManager对象,
   * 该对象包含taskSet所有tasks,并管理这些tasks的执行,其中就包括计算taskSetManager中的tasks都有哪些locality levels,
