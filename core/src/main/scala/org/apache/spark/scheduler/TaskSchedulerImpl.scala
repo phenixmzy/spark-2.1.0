@@ -139,7 +139,10 @@ private[spark] class TaskSchedulerImpl(
   override def setDAGScheduler(dagScheduler: DAGScheduler) {
     this.dagScheduler = dagScheduler
   }
-
+  /**
+    * 创建调度池对象rootPool,然后根据系统配置的调度模式创建调度创建器,针对两种策略(FIFO和公平调度),实例化调度创建器,
+    * 最终使用调度创建器的buildPools方法在根调度池下创建调度池.
+    * */
   def initialize(backend: SchedulerBackend) {
     this.backend = backend
     // temporarily set rootPool name to empty
@@ -177,6 +180,12 @@ private[spark] class TaskSchedulerImpl(
   }
 
   /**
+    * 该方法先把调度阶段拆分为任务集,然后把这些任务集交给任务集管理器TaskSetManager进行管理;然后把任务集管理器TaskSetManager加入的调度池中,
+    * 等待调度执行.
+    * 在FIFO中,由于buildPools方法为空,所以根调度池rootPool并没有下级调度池,而是包含一组TaskSetManager;
+    * 在FAIR中,根调度池rootPool包含了下级调度池,下级调度池中包含了一组TaskSetManager.
+    *
+    *
     * TaskSchedulerImpl收到发送过来的任务集时,在submitTasks方法中构建一个TaskSetManager的实例( createTaskSetManager(taskSet, maxTaskFailures)),
     * 用于管理这个任务集合的生命周期,而这个TaskSetManager会放入系统的调度池中,根据系统设置的调度算法进行调度.
     * 然后调用后台调度器 (CoarseGrainedSchedulerBackend)SchedulerBackend#reviveOffers方法分配资源并运行,CoarseGrainedSchedulerBackend#reviveOffers方法中,
@@ -187,6 +196,7 @@ private[spark] class TaskSchedulerImpl(
     val tasks = taskSet.tasks
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks")
     this.synchronized {
+      //创建任务集管理器TaskSetManager,用于管理taskSet的生命周期
       val manager = createTaskSetManager(taskSet, maxTaskFailures)
       val stage = taskSet.stageId
       val stageTaskSets =
@@ -310,6 +320,9 @@ private[spark] class TaskSchedulerImpl(
    * that tasks are balanced across the cluster.
    */
   /**
+    * 该方法中进行资源分配时,会从根调度池rootPool中获取已排序的任务集管理器,排序的算法策略有两种,FIFOSchedulingAlgorithm和FairSchedulingAlgorithm,
+    * 均实现自org.apache.spark.scheduler.SchedulingAlgorithm
+    *
     * 在TaskSchedulerImpl#resourceOffers方法中进行非常重要的步骤 - 资源分配.
     * 在分配的过程中会根据调度策略对TaskSetManager进行排序,然后依次对这些TaskSetManager按照就近原则分配资源(按照顺序为PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY).
     *
@@ -351,7 +364,7 @@ private[spark] class TaskSchedulerImpl(
     // 构建一个task列表分派到每个worker上.
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
-    val sortedTaskSets = rootPool.getSortedTaskSetQueue //任务队列里的任务列表依据调度策略进行一次排序
+    val sortedTaskSets = rootPool.getSortedTaskSetQueue //按照调度策略,获取已排序好的TaskSetManager.任务队列里的任务列表依据调度策略进行一次排序
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
