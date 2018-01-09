@@ -584,18 +584,22 @@ private[deploy] class Master(
    * allocated at a time, 12 cores from each worker would be assigned to each executor.
    * Since 12 < 16, no executors would launch [SPARK-8881].
    */
+  /**
+    * 返回集群中worker节点所能提供cpu核数数组.
+    *
+    * */
   private def scheduleExecutorsOnWorkers(
       app: ApplicationInfo,
       usableWorkers: Array[WorkerInfo],
       spreadOutApps: Boolean): Array[Int] = {
-    val coresPerExecutor = app.desc.coresPerExecutor
-    val minCoresPerExecutor = coresPerExecutor.getOrElse(1)
-    val oneExecutorPerWorker = coresPerExecutor.isEmpty
+    val coresPerExecutor = app.desc.coresPerExecutor//app每个executor所需要的cpu核数
+    val minCoresPerExecutor = coresPerExecutor.getOrElse(1)//每次分配时分配给executor所需的最小cpu核数,如果app设置了每个executor所需cpu核数,则按配置数返回
+    val oneExecutorPerWorker = coresPerExecutor.isEmpty//如果没有设置,则表示该应用程序在worker节点只启动一个executor,并尽可能分配资源
     val memoryPerExecutor = app.desc.memoryPerExecutorMB
-    val numUsable = usableWorkers.length
-    val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
-    val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
-    var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
+    val numUsable = usableWorkers.length//集群中可用节点数
+    val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker(每个worker节点能提供cpu核数数组)
+    val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker(每个worker节点上能提供executors数数组)
+    var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)//需要分配的cpu核数,app申请的与可用的取最小值
 
     /** Return whether the specified worker can launch an executor for this app. */
     def canLaunchExecutor(pos: Int): Boolean = {
