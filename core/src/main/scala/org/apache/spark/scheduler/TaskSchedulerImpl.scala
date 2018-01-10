@@ -280,6 +280,10 @@ private[spark] class TaskSchedulerImpl(
       s" ${manager.parent.name}")
   }
 
+  /**
+    * 为单个TaskSet分配资源,分配的资源是来自WorkerOffer(executor上空闲资源).
+    * 资源的分配并非在所在的worker或executor上new或创建内存空间或cpu,而是标记资源分配,从空闲的资源中获取.
+    * */
   private def resourceOfferSingleTaskSet(
       taskSet: TaskSetManager,
       maxLocality: TaskLocality,
@@ -330,10 +334,11 @@ private[spark] class TaskSchedulerImpl(
     * 用途是底层资源SchedulerBackend把空余的workers资源交给TaskScheduler,让其根据调度策略为排队的任务分配合理的cpu和内存资源,然后把任务描述列表传回给SchedulerBackend
     * 1. 从worker offers里,搜集executor和host的对应关系、active executors、机架信息等等;
     * 2. worker offers资源列表进行随机洗牌,任务队列里的任务列表依据调度策略进行一次排序;
-    * 3. 遍历每个taskSet,按照进程本地化、worker本地化、机器本地化、机架本地化的优先级顺序,为每个taskSet提供可用的cpu核数,看是否满足;
+    * 3. 遍历每个TaskSetManager,按照进程本地化、worker本地化、机器本地化、机架本地化的优先级顺序,为每个TaskSetManager提供可用的cpu核数,看是否满足;
     * 3.1 默认一个task需要一个cpu,设置参数为"spark.task.cpus=1"
     * 3.2 为taskSet分配资源,校验是否满足的逻辑,最终在TaskSetManager的resourceOffer(execId, host, maxLocality)方法里
-    * 3.3 满足的话,会生成最终的任务描述,并且调用DAGScheduler的taskStarted(task, info)方法,通知DAGScheduler,这时候每次会触发DAGScheduler做一次submitMissingStage的尝试,即stage的tasks都分配到了资源的话,马上会被提交执行
+    * 3.3 满足的话,会生成最终的任务描述,并且调用DAGScheduler的taskStarted(task, info)方法,通知DAGScheduler,
+    * 这时候每次会触发DAGScheduler做一次submitMissingStage的尝试,即stage的tasks都分配到了资源的话,马上会被提交执行
     * */
   def resourceOffers(offers: IndexedSeq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     // Mark each slave as alive and remember its hostname
@@ -358,13 +363,19 @@ private[spark] class TaskSchedulerImpl(
 
     // Randomly shuffle offers to avoid always placing tasks on the same set of workers.
     // 随机洗牌避免所有的task都放在同一个worker上.
-    /** 2. worker offers资源列表进行随机洗牌,任务队列里的任务列表依据调度策略进行一次排序 */
+    /**
+      * 2. worker offers资源列表进行随机洗牌,任务队列里的任务列表依据调度策略进行一次排序
+      * 为了负载均衡,打散offers的顺序,Random.shuffle用于将队列里面的元素打散
+      * */
     val shuffledOffers = Random.shuffle(offers)
     // Build a list of tasks to assign to each worker.
     // 构建一个task列表分派到每个worker上.
+    // 创建每一个worker对应运行的任务列表的Map
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
-    val sortedTaskSets = rootPool.getSortedTaskSetQueue //按照调度策略,获取已排序好的TaskSetManager.任务队列里的任务列表依据调度策略进行一次排序
+    //按照调度策略,获取已排序好的TaskSetManager.任务队列里的任务列表依据调度策略进行一次排序
+    val sortedTaskSets = rootPool.getSortedTaskSetQueue
+    //遍历已排序列表,如果有新的Executor加入,需要重新计算数据本地性
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
@@ -377,7 +388,8 @@ private[spark] class TaskSchedulerImpl(
     // of locality levels so that it gets a chance to launch local tasks on all of them.
     // NOTE: the preferredLocality order: PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
     /***
-      * 3. 遍历每个taskSet,按照进程本地化、worker本地化、机器本地化、机架本地化的优先级顺序,为每个taskSet提供可用的cpu核数,看是否满足;
+      * 为排好序的TaskSetManager列表分配资源.
+      * 3. 遍历每个taskSetManager,按照进程(运行当前最大本地性launchedTaskAtCurrentMaxLocality)本地化、worker本地化、机器本地化、机架本地化的优先级顺序,为每个taskSet提供可用的cpu核数,看是否满足;
       * 3.1 默认一个task需要一个cpu,设置参数为"spark.task.cpus=1"
       * 3.2 为taskSet分配资源,校验是否满足的逻辑,最终在TaskSetManager#resourceOffer(execId, host, maxLocality)方法里
       * 3.3 满足的话,会生成最终的任务描述,并且调用DAGScheduler的taskStarted(task, info)方法,通知DAGScheduler,
@@ -386,6 +398,7 @@ private[spark] class TaskSchedulerImpl(
     for (taskSet <- sortedTaskSets) {
       var launchedAnyTask = false
       var launchedTaskAtCurrentMaxLocality = false
+      //通过TaskSetManager的myLocalityLevels属性,获取任务集中任务自身的数据本地性列表
       for (currentMaxLocality <- taskSet.myLocalityLevels) {
         do {
           launchedTaskAtCurrentMaxLocality = resourceOfferSingleTaskSet(
