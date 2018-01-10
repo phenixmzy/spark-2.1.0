@@ -53,6 +53,29 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
   * 在DAGScheduler向TaskScheduler提交了taskSet之后,TaskSchedulerImpl 会为每个taskSet创建一个TaskSetManager对象,
   * 该对象包含taskSet所有tasks,并管理这些tasks的执行,其中就包括计算taskSetManager中的tasks都有哪些locality levels,
   * 以便在调度和延迟调度 tasks 时发挥作用.
+  *
+  * -数据本地性
+  * 任务数据本地性通过以下情况来确定:
+  * 1 如果任务处于作业开始的调度阶段内,这些任务对应的RDD分区都有首选运行位置,该位置也是任务运行首选位置,数据本地性为NODE_LOCAL;
+  * 2 如果任务处于作业开头的调度阶段,可以根据父调度阶段运行的位置得到任务的首选位置,这种情况下,如果Executor处于活动状态,
+  * 则数据本地性为PROCESS_LOCAL;
+  * 如果Executor不处于活动状态,但存在父调度阶段运行结果,则数据本地性为NODE_LOCAL;
+  * 3 如果没有首选位置,则数据本地性为NO_PREF
+  *
+  *
+  * -延迟执行
+  * 在任务分配运行节点时,先判断任务最佳运行节点是否空闲,如果该节点没有足够的资源运行该任务,会等待一定的时间;
+  * 如果在等待的时间内该节点释放出足够的资源,则任务在该节点运行;
+  * 如果还是不足,会找出次佳的节点进行运行.通过这样的方式进行能让任务运行在更高级别数据本地性的节点,从而减少磁盘IO和网络传输.
+  * 一般来说只对PROCESS_LOCAL和NODE_LOCAL两个数据本地性级别进行等待,系统默认延迟时间为3s.
+  *
+  * Spark任务分配的原则是让任务运行在数据本地性优先级高的节点上,甚至可以为此等待一定的时间.任务分配的过程是由TaskSchedulerImpl.resourceoffers
+  * 方法实现.
+  * 在该方法中线对应用程序获取的资源进行混洗,以使得任务能够更加均衡地分散在集群中运行,
+  * 然后对任务集对应的TaskSetManager根据设置的调度算法进行排序;
+  * 最后对TaskSetManager中的任务按照数据本地性分配任务运行节点,在分配时先根据任务集的本地性从优先级高到底进行分配任务,
+  * 在分配的过程中动态地判断集群中节点运行的情况,通过延迟执行等待数据本地性更高的节点运行.
+  *
   * */
 private[spark] class TaskSetManager(
     sched: TaskSchedulerImpl,
@@ -523,6 +546,8 @@ private[spark] class TaskSetManager(
     * */
   private def getAllowedLocalityLevel(curTime: Long): TaskLocality.TaskLocality = {
     // Remove the scheduled or finished tasks lazily
+    //在正在运行任务copieRunning和成功运行任务successful两个列表中检查是否包含指定的任务,
+    //如果不包含,则表示该任务需要运行;如果包含,则需要把该任务冲前面的pending4个列表中移除.
     def tasksNeedToBeScheduledFrom(pendingTaskIds: ArrayBuffer[Int]): Boolean = {
       var indexOffset = pendingTaskIds.size
       while (indexOffset > 0) {
@@ -556,6 +581,7 @@ private[spark] class TaskSetManager(
     }
 
     while (currentLocalityIndex < myLocalityLevels.length - 1) {
+      //获取指定的数据本地性是否包含需要运行的任务
       val moreTasks = myLocalityLevels(currentLocalityIndex) match {
         case TaskLocality.PROCESS_LOCAL => moreTasksToRunIn(pendingTasksForExecutor)
         case TaskLocality.NODE_LOCAL => moreTasksToRunIn(pendingTasksForHost)
@@ -566,6 +592,7 @@ private[spark] class TaskSetManager(
         // This is a performance optimization: if there are no more tasks that can
         // be scheduled at a particular locality level, there is no point in waiting
         // for the locality wait timeout (SPARK-4939).
+        //如果没有包含需要运行的任务,则进入下一级数据本地性处理
         lastLaunchTime = curTime
         logDebug(s"No tasks for locality level ${myLocalityLevels(currentLocalityIndex)}, " +
           s"so moving to locality level ${myLocalityLevels(currentLocalityIndex + 1)}")
@@ -573,11 +600,13 @@ private[spark] class TaskSetManager(
       } else if (curTime - lastLaunchTime >= localityWaits(currentLocalityIndex)) {
         // Jump to the next locality level, and reset lastLaunchTime so that the next locality
         // wait timer doesn't immediately expire
+        //如果存在需要运行的任务但延迟时间超过了该数据本地性设置的延迟时间,也进行下一级数据本地处理
         lastLaunchTime += localityWaits(currentLocalityIndex)
         logDebug(s"Moving to ${myLocalityLevels(currentLocalityIndex + 1)} after waiting for " +
           s"${localityWaits(currentLocalityIndex)}ms")
         currentLocalityIndex += 1
       } else {
+        //返回满足条件的数据本地性
         return myLocalityLevels(currentLocalityIndex)
       }
     }
