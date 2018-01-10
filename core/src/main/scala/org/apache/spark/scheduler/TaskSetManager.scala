@@ -413,6 +413,14 @@ private[spark] class TaskSetManager(
    * @param host  the host Id of the offered resource
    * @param maxLocality the maximum locality we want to schedule the tasks at
    */
+  /** 对指定worker的executor分配运行的任务.
+    * 调用getAllowedLocalityLevel获取当前任务集允许执行的数据本地性,如果返回的允许执行的数据本地性比指定的数据本地性还要低,
+    * 则使用指定数据本地性.在比较数据本地性时,比较的时数据本地性的索引值,而数据本地性的优先级和数据本地性索引值是相反的,优先级越高
+    * 值越小.
+    * 接着,对于指定的节点和获取的数据本地性,在dequeueTask中验证是否存在可以分配合适的任务,如果存在则返回本地性信息.
+    * 最后,更新任务集相关的记录信息,序列化任务,并把任务添加到运行列表中.
+    *
+    * */
   @throws[TaskNotSerializableException]
   def resourceOffer(
       execId: String,
@@ -428,9 +436,11 @@ private[spark] class TaskSetManager(
       val curTime = clock.getTimeMillis()
 
       var allowedLocality = maxLocality
-
+      //如果资源有Locality的特征
       if (maxLocality != TaskLocality.NO_PREF) {
+        //获取当前任务集允许执行的Locality,getAllowedLocalityLevel会随时间变化而变化
         allowedLocality = getAllowedLocalityLevel(curTime)
+        //如果允许的Locality低于maxLocality,则覆盖allowedLocality
         if (allowedLocality > maxLocality) {
           // We're not allowed to search for farther-away tasks
           allowedLocality = maxLocality
@@ -456,7 +466,7 @@ private[spark] class TaskSetManager(
         }
         // Serialize and return the task
         val startTime = clock.getTimeMillis()
-        val serializedTask: ByteBuffer = try {
+        val serializedTask: ByteBuffer = try {//更新相关信息,并对任务进行序列化
           Task.serializeWithDependencies(task, sched.sc.addedFiles, sched.sc.addedJars, ser)
         } catch {
           // If the task cannot be serialized, then there's no point to re-attempt the task,
@@ -474,7 +484,7 @@ private[spark] class TaskSetManager(
             s"(${serializedTask.limit / 1024} KB). The maximum recommended task size is " +
             s"${TaskSetManager.TASK_SIZE_TO_WARN_KB} KB.")
         }
-        addRunningTask(taskId)
+        addRunningTask(taskId)//把任务添加到运行列表中
 
         // We used to log the time it takes to serialize the task, but task size is already
         // a good proxy to task serialization time.
@@ -501,6 +511,16 @@ private[spark] class TaskSetManager(
   /**
    * Get the level we can launch tasks according to delay scheduling, based on current wait time.
    */
+  /**
+    * 获取当前任务集允许执行的数据本地性方法实现
+    * 该方法从上次获取到的数据本地性开始,根据优先级从高到低开始判断是否存在需要运行的任务,
+    * 如果对于一级本地性没有存在需要运行的任务,则不进行等待而进入下一级数据本地性处理;
+    * 如果存在需要运行的任务,但延时时间超过了该数据本地性设置的延时时间,也进入下一级数据本地性处理;
+    * 如果不满足前面两种情况,返回该数据本地性.
+    *
+    * 判断数据本地性是否存在需要运行的任务的方法:
+    * 在copiesRunning和successful两个列表中检查是否包含指定的任务,如果都不包含,表示需要处理;否则,不需要处理.
+    * */
   private def getAllowedLocalityLevel(curTime: Long): TaskLocality.TaskLocality = {
     // Remove the scheduled or finished tasks lazily
     def tasksNeedToBeScheduledFrom(pendingTaskIds: ArrayBuffer[Int]): Boolean = {

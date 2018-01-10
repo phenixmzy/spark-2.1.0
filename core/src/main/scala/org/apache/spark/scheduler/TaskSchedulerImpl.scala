@@ -283,6 +283,9 @@ private[spark] class TaskSchedulerImpl(
   /**
     * 为单个TaskSet分配资源,分配的资源是来自WorkerOffer(executor上空闲资源).
     * 资源的分配并非在所在的worker或executor上new或创建内存空间或cpu,而是标记资源分配,从空闲的资源中获取.
+    * 对单个任务集的任务调度该方法实现,其先遍历所有的worker,先判断worker中的cpu核数是否能满足任务运行的核数,
+    * 如果满足,则调用TaskSetManager#resourceOffer对worker对executor分配运行任务,分配完毕后,更新任务集管理器对应的
+    * 任务集管理列表,任务对应的executor列表和executor对应的机器列表,并减去该任务使用的cpu核算
     * */
   private def resourceOfferSingleTaskSet(
       taskSet: TaskSetManager,
@@ -291,11 +294,14 @@ private[spark] class TaskSchedulerImpl(
       availableCpus: Array[Int],
       tasks: IndexedSeq[ArrayBuffer[TaskDescription]]) : Boolean = {
     var launchedTask = false
+    //遍历所有的worker,为每个worker分配运行的任务
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
       val host = shuffledOffers(i).host
+      //当Worker的核算满足所需的cpu核数时
       if (availableCpus(i) >= CPUS_PER_TASK) {
         try {
+          //execId,对指定对executor分配运行的任务,分配后更新相关列表和减少可用的cpu核数
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
             val tid = task.taskId
