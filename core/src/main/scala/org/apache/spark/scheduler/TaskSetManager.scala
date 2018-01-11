@@ -48,6 +48,9 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
  *                        task set will be aborted
  */
 /**
+  * 在TaskSchedulerImpl中对单个TaskSet进行调度.这个类保持跟踪每个task,并在失败时进行重试,它会对TaskSet对位置感知进行处理(PROCESS_LOCAL,NODE_LOCAL)
+  * 和相应对延迟调度.它有一个主要对接口resourceOffer,用来分配TaskSet运行在一个节点上并更新取状态.
+  *
   * 在任务分配中,TaskSetManager是核心对象.
   * 用于管理任务集的生命周期,会被系统放入任务调度池里面,根据系统设置的调度算法进行调度.
   * 在DAGScheduler向TaskScheduler提交了taskSet之后,TaskSchedulerImpl 会为每个taskSet创建一个TaskSetManager对象,
@@ -134,11 +137,11 @@ private[spark] class TaskSetManager(
   // TODO: We should kill any running task attempts when the task set manager becomes a zombie.
   var isZombie = false
 
-  // Set of pending tasks for each executor. These collections are actually
-  // treated as stacks, in which new tasks are added to the end of the
+  // Set of pending tasks for each executor. These collections are actually(实际上)
+  // treated(处理) as stacks, in which new tasks are added to the end of the
   // ArrayBuffer and removed from the end. This makes it faster to detect
-  // tasks that repeatedly fail because whenever a task failed, it is put
-  // back at the head of the stack. These collections may contain duplicates
+  // tasks that repeatedly(反复) fail because whenever a task failed, it is put
+  // back at the head of the stack. These collections may contain duplicates(重复)
   // for two reasons:
   // (1): Tasks are only removed lazily; when a task is launched, it remains
   // in all the pending lists except the one that it was launched from.
@@ -994,7 +997,7 @@ private[spark] class TaskSetManager(
   /**
    * Compute the locality levels used in this TaskSet. Assumes that all tasks have already been
    * added to queues using addPendingTask.
-   *
+   * 计算该TaskSet的数据本地性等级.前提是所有的task都已经使用addPendingTask被add到队列中.
    */
   private def computeValidLocalityLevels(): Array[TaskLocality.TaskLocality] = {
     import TaskLocality.{PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY}
