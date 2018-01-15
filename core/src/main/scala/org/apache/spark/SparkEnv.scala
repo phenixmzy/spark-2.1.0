@@ -361,17 +361,24 @@ object SparkEnv extends Logging {
     } else {
       conf.get(BLOCK_MANAGER_PORT)
     }
-
+    //创建远程传输服务,Netty方式传输数据块.Executor启动时创建.
     val blockTransferService =
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
         blockManagerPort, numUsableCores)
 
+    // 创建BlockManagerMaster.
+    // 如果是Driver端,在BlockManagerMaster内部创建终端点BlockManagerMasterEndpoint.
+    // 如果是Executor端,则创建BlockManagerMasterEndpoint引用（ref）.
     val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
       BlockManagerMaster.DRIVER_ENDPOINT_NAME,
       new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
       conf, isDriver)
 
     // NB: blockManager is not valid until initialize() is called later.
+    // 创建BlockManager.
+    // 如果是Driver端,包含BlockManagerMaster
+    // 如果是Executor端,包含端是BlockManagerMaster的引用,另外,BlocakManager包含了blockTransferService数据传输服务.
+    // 当BlockManager调用initialize初始化时才生效.
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
       serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
       blockTransferService, securityManager, numUsableCores)

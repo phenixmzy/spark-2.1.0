@@ -58,6 +58,9 @@ private[spark] class BlockResult(
  *
  * Note that [[initialize()]] must be called before the BlockManager is usable.
  */
+/**
+  * BlockManager运行在每一个driver and executors所在的节点上.它提供了统一的对block进行本地或远端各种存储(memory,disk,off-heap)里面进行putting和查询操作的接口
+  * */
 private[spark] class BlockManager(
     executorId: String,
     rpcEnv: RpcEnv,
@@ -160,7 +163,12 @@ private[spark] class BlockManager(
    * BlockManagerMaster, starts the BlockManagerWorker endpoint, and registers with a local shuffle
    * service if configured.
    */
+  /**
+    * 如果是Executor,创建其消息通信的终端点BlockManagerSlaveEndpoint,并向Driver端发送RegisterBlockManager消息,
+    * 把该Executor的BlockManager和其所包含的BlockManagerSlaveEndpoint注册到BlockManagerMaster中.
+    * */
   def initialize(appId: String): Unit = {
+    //
     blockTransferService.init(this)
     shuffleClient.init(appId)
 
