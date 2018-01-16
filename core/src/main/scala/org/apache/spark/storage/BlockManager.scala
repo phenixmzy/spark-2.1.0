@@ -60,7 +60,56 @@ private[spark] class BlockResult(
  */
 /**
   * BlockManager运行在每一个driver and executors所在的节点上.
-  * 它提供了统一的对block进行本地或远端各种存储(memory,disk,off-heap)里面进行putting和查询操作的接口
+  * 它提供了统一的对block进行本地或远端各种存储(memory,disk,off-heap)里面进行putting和查询操作的接口.
+  *
+  * Spark存储的整体架构:
+  * Spark存储采用Master/Slave的主从模式.
+  * Master负责数据块的元数据管理和维护,
+  * Slave负责把数据块的状态信息上报Master,同时Slave也接收执行Master下达的执行命令包括获取数据状态信息,删除rdd/数据块等命名.
+  * 在每个Slave内部都存在一个数据传输通道,根据需要在Slave之间进行远程对数据读写.
+  *
+  * 下面将根据数据生命周期过程中进行的消息通信.
+  * 1) 在应用程序启动时
+  * Driver端:
+  * 在应用程序启动时,SparkContext会创建一个Driver端的SparkEnv,在该SparkEnv中实例化BlockManager,BlockManagerMaster,
+  * 在BlockManagerMaser内部创建消息通信的终端点BlockManagerMasterEndpoint.
+  *
+  * Executor端:
+  * 在Executor在启动时也会创建SparkEnv,在该SparkEnv中实例化BlockManager和负责网络数据传输服务的BlockTransService.
+  * 在BlockManager初始化过程中,
+  * 一方面会加入BlockManagerMasterEndpoint终端点的引用,
+  * 另一方面会创建Executor消息通信的BlockManagerSlaveEndpoint终端点,并把该终端点的引用(SlaveEndpointRef)注册到Driver中,
+  * 这样Driver和Executor相互持有通信终端点的引用,可以在应用程序执行过程中进行消息通信.
+  * 实例化BlockTransService过程中,使用Netty的数据传输服务方式.由于该数据传输服务隐藏了集群间不同节点间的消息传输操作,可类似于本地数据操作方式进行数据
+  * 读写,大大简化了网络间数据传输的复杂程度.
+  *
+  *
+  * 2) 当写入,删除,更新数据完毕后,会发送状态更新信息,UpdateBlockInfo到BlockManagerMasterEndpoint进行数据块元数据的更新.
+  * tryToReportBlockStatus -> master.updateBlockInfo
+  * BlockManagerMasterEndpoint对数据块元数据更新主要更新两个列表,blockManagerInfo和blockLocations.
+  * --BlockManagerMasterEndpoint#blockManagerInfo
+  * 在处理blockManagerInfo时,传入的BlockManagerId,blockId和StorageLevel等参数通过这些参数判断数据的操作是插入,更新还是删除.
+  * 当插入或更新数据块时只更新数据块BlockManagerInfo信息.
+  * 当删除数据块,则会在BlockManagerInfo移除数据块,这些操作结束后会对Executor的内存使用信息进行更新.
+  *
+  * --BlockManagerMasterEndpoint#blockLocations
+  *
+  *
+  *
+  *
+  * 3) 通过对数据块元数据获取查询数据块的位置信息(BlockManagerMasterEndpoint)
+  * 应用程序数据存储后,在获取远程节点数据,rdd执行的首选位置操作时,需要根据数据块的编号查询数据块所处的位置,此时会发送GetLocations或
+  * GetLocationsMulitpleBlockId等消息给BlockManagerMasterEndpoint通过对元数据的查询获取数据块位置信息.
+  *
+  *
+  * 4) 提供删除rdd,数据块和广播变量等方式(BlockManagerMasterEndpoint)
+  * 发送消息给BlockManagerMasterEndpoint,由BlockManagerMasterEndpoint发起相应的删除操作.
+  * 删除操作:
+  * 一方面需要删除Driver端元信息;
+  * 另一方面需要发送消息到Executor端,删除对应到物理数据;
+  *
+  *
+  *
   * */
 private[spark] class BlockManager(
     executorId: String,
@@ -169,7 +218,7 @@ private[spark] class BlockManager(
     * 把该Executor的BlockManager和其所包含的BlockManagerSlaveEndpoint注册到BlockManagerMaster中.
     * */
   def initialize(appId: String): Unit = {
-    //
+    // 在Executor中会启动远程数据传输服务,根据配置启动传输服务器BlockTransferServer,该服务启动后等待其他节点发送请求
     blockTransferService.init(this)
     shuffleClient.init(appId)
 
@@ -181,17 +230,18 @@ private[spark] class BlockManager(
       logInfo(s"Using $priorityClass for block replication policy")
       ret
     }
-
+    //获取BlockManager的编号
     val id =
       BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
-
+    //如果是Executor端,把Executor的BlockManager注册到BlockManagerMaster中,其中包括其终端点BlockManagerSlaveEndpoint的引用,这样
+    //Master端(BlockManagerMaster)就可以向Executor发送消息.
     val idFromMaster = master.registerBlockManager(
       id,
       maxMemory,
       slaveEndpoint)
 
     blockManagerId = if (idFromMaster != null) idFromMaster else id
-
+    //获取shuffle服务编号,如果启动外部服务编号,则加入外部shuffle服务端口信息,否则返回BlockManager编号.
     shuffleServerId = if (externalShuffleServiceEnabled) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
       BlockManagerId(executorId, blockTransferService.hostName, externalShuffleServicePort)

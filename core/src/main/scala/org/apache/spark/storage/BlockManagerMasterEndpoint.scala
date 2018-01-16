@@ -36,7 +36,8 @@ import org.apache.spark.util.{ThreadUtils, Utils}
  * of all slaves' block managers.
  */
 /** BlockManagerMasterEndpoint存在于BlockManagerMaster(BlockManagerMaster存在于Driver上)节点上用于跟踪所有slave的block managers的状态.
-  * 其除了维护必要的blockmanager,executor->BlockManagerId,blockLocaltions等信息外,主要是用于消息和状态的传递
+  * 其除了维护必要的blockmanager,executor->BlockManagerId,blockLocaltions等信息外,主要是用于消息和状态的传递,维护数据块的元数据.
+  * BlockManagerMasterEndpoint通过blockManagerInfo,blockManagerIdByExecutor,blockLocations等变量来维护数据块的元数据
   * */
 private[spark]
 class BlockManagerMasterEndpoint(
@@ -47,12 +48,15 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
+  // 映射BlockManagerId对应的BlockManagerInfo.
+  // BlockManagerInfo包含了Executor的内存使用情况,数据块使用情况,已缓存的数据块和Executor终端的引用,通过该引用可以向Executor发送消息.
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
 
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
   // Mapping from block id to the set of block managers that have the block.
+  // BlockId对应的BlockManagerId列表,因为一个数据块会存放多个副本,存放在多个Executor上.
   private val blockLocations = new JHashMap[BlockId, mutable.HashSet[BlockManagerId]]
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
@@ -395,6 +399,7 @@ class BlockManagerMasterEndpoint(
   }
 
   private def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
+    //如果包含BlockId对应的数据块,则返回BlockManagerId序列.
     if (blockLocations.containsKey(blockId)) blockLocations.get(blockId).toSeq else Seq.empty
   }
 
@@ -439,7 +444,9 @@ case class BlockStatus(storageLevel: StorageLevel, memSize: Long, diskSize: Long
 object BlockStatus {
   def empty: BlockStatus = BlockStatus(StorageLevel.NONE, memSize = 0L, diskSize = 0L)
 }
-
+/**
+  * 包含了Executor的内存使用情况,数据块使用情况,已缓存的数据块和Executor终端的引用,通过该引用可以向Executor发送消息.
+  * */
 private[spark] class BlockManagerInfo(
     val blockManagerId: BlockManagerId,
     timeMs: Long,

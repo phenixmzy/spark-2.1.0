@@ -59,6 +59,8 @@ import org.apache.spark.util.{RpcUtils, Utils}
   * SparkEnv分两种,Drive 和 Executor 分别由createDriverEnv 和 createExecutorEnv,分别由Driver 和 CoarseGrainedExecutorBackend所持有.
   * SparkEnv中最重要的是create方法.
   *
+  *
+  *
   * 在Executor在启动时也会创建SparkEnv,在该SparkEnv中实例化BlockManager和负责网络数据传输服务的BlockTransService.在BlockManager初始化
   * 过程中,一方面会加入BlockManagerMasterEndpoint终端点的引用,另一方面会创建Executor消息通信的BlockManagerSlaveEndpoint终端点,并把该终端点的引用
   * 注册到Driver中,这样Driver和Executor相互持有通信终端点的引用,可以在应用程序执行过程中进行消息通信.
