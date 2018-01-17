@@ -752,6 +752,7 @@ private[spark] class BlockManager(
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
+    // 尝试从本地或远端存储读取数据块.
     get[T](blockId)(classTag) match {
       case Some(block) =>
         return Left(block)

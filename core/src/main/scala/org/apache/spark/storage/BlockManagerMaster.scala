@@ -27,7 +27,11 @@ import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.util.{RpcUtils, ThreadUtils}
 /**
-  * BlockManagerMaster存在于Driver上.
+  * BlockManagerMaster存在于Driver上.对存在于Executor上的BlockManager进行统一的管理.
+  * 比如:
+  * 1 Executor需要向Driver发送注册BlockManager;
+  * 2 更新Executor上Block的最新信息;
+  * 3 询问所需要Block目前所在的位置以及当Executor运行结束需要将此Executor移除等等.
   * */
 private[spark]
 class BlockManagerMaster(
