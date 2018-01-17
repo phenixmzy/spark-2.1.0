@@ -60,6 +60,15 @@ private[spark] class BlockResult(
  */
 /**
   * BlockManager运行在每一个driver and executors所在的节点上.
+  * Driver端上的BlockManager存储了数据块的元信息,而executor上的则根据接收的消息进行操作.
+  * --Executor数据读取
+  * Executor的BlockManager接收到读取数据的消息时,根据数据块所在的节点是否本地化,而使用BlockManager不同的方法.
+  * 如果在本地,则直接调用MemoryStore和DiskStore相应的getValues/getBytes方法进行读取;
+  * 如果存在与远程,则调用BlockTransferService服务进行远程拉取;
+  *
+  * --Executor数据写入
+  * Executor的BlockManager接收到写入数据的消息时,如果不需要副本,则调用BlockStore进行处理,根据写入类型调用对应的方法进行写入.
+  *
   * 它提供了统一的对block进行本地或远端各种存储(memory,disk,off-heap)里面进行putting和查询操作的接口.
   *
   * Spark存储的整体架构:
