@@ -80,6 +80,10 @@ import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, Poi
   * 于其他rdd的依赖列表
   * Partitioner
   * 首选列表
+  *
+  * RDD会包含多个partition,每个partition都会对应一个数据块Block,每个Block都拥有唯一一个编号:rdd_rddId_splitIndex
+  * rddId是rdd的编号;
+  * splitIndex为该数据块对于partition的序列号;
   * */
 abstract class RDD[T: ClassTag](
     @transient private var _sc: SparkContext,
@@ -171,18 +175,26 @@ abstract class RDD[T: ClassTag](
    * @param newLevel the target storage level
    * @param allowOverride whether to override any existing level with the new one
    */
+  /**
+    * 当RDD第一次被计算时,persist方法会根据参数StorageLevel的设置来采取不同的缓存策略.
+    * 当RDD原本的存储级别为NONE,或者新传入的存储级别与原来的存储级别相等时才会进行操作.
+    * persist的操作只是更改RDD元数据的操作,并没有对数据进行实质性对存储操作,真正进行操作是在RDD#iterator方法中.
+    * */
   private def persist(newLevel: StorageLevel, allowOverride: Boolean): this.type = {
     // TODO: Handle changes of StorageLevel
+    //如果RDD的存储级别指定了非NONE,则不能被修改
     if (storageLevel != StorageLevel.NONE && newLevel != storageLevel && !allowOverride) {
       throw new UnsupportedOperationException(
         "Cannot change storage level of an RDD after it was already assigned a level")
     }
     // If this is the first time this RDD is marked for persisting, register it
     // with the SparkContext for cleanups and accounting. Do this only once.
+    // 当RDD原来的存储级别时NONE,可以对RDD进行持久化处理,在处理前先清理SparkContext中原RDD存储的元数据,然后加入该RDD持久化信息
     if (storageLevel == StorageLevel.NONE) {
       sc.cleaner.foreach(_.registerRDDForCleanup(this))
       sc.persistRDD(this)
     }
+    //当RDD原来的存储级别时NONE,更新RDD的存储级别
     storageLevel = newLevel
     this
   }
@@ -288,10 +300,19 @@ abstract class RDD[T: ClassTag](
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
+  /**
+    * 由于persist方法这是更新RDD的元数据,并没有对数据进行实际性对存储操作;而实质性的操作是在任务运行过程中,调用了RDD的iterator方法.
+    * 调用过程中先根据Block的编号再判断是否已经存在按照指定的存储级别进行存储.
+    * 如果已经存在数据块,从本地读取或从远程节点读取;
+    * 如果不存在该数据块,则调用RDD的计算方法得出结果,并把计算结果按照存储级别进行存储;
+    *
+    * */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
     if (storageLevel != StorageLevel.NONE) {
+      //如果RDD存在存储级别,则尝试在内存中读取进行迭代计算
       getOrCompute(split, context)
     } else {
+      //如果不寻找存储级别,则直接读取数据进行迭代计算或者从checkpoint中读取进行迭代计算
       computeOrReadCheckpoint(split, context)
     }
   }
@@ -336,13 +357,18 @@ abstract class RDD[T: ClassTag](
    * Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached.
    */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
+    //通过RDD编号和partition序列的编号获取Block的编号
     val blockId = RDDBlockId(id, partition.index)
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
+    // 这个方法会在executor调用,所以需要通过调用 SparkEnv.get 来代替sc.env
+    // 根据数据块编号,先读取数据,然后在更新数据.这里是对数据块进行读写的入口.
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
+      //如果数据块不存在于内存中,则尝试从checkpoint中迭代计算
       readCachedBlock = false
       computeOrReadCheckpoint(partition, context)
     }) match {
+        // 对getOrElseUpdate方法返回对结果进行处理,该结果表示处理成功,记录结果度量信息
       case Left(blockResult) =>
         if (readCachedBlock) {
           val existingMetrics = context.taskMetrics().inputMetrics
@@ -356,6 +382,7 @@ abstract class RDD[T: ClassTag](
         } else {
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
+      // 对getOrElseUpdate方法返回对结果进行处理,该结果表示保存失败.比如数据太大,无法放入到内存中,并且无法写到磁盘中,把结果返回给调用者,让其决定如何处理
       case Right(iter) =>
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
