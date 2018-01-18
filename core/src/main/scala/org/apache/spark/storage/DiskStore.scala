@@ -35,6 +35,7 @@ import org.apache.spark.util.io.ChunkedByteBuffer
   * 存储BlockManager数据块到磁盘中.
   * 其主要提供put/get方法对数据块进行读取和写入操作.
   * 磁盘数据存储在spark.local.dir目录中,而块数据存放在该目录对二级目录下,存放目录有BlockManager来决定,具体是BlockManager＃getFile.
+  * 一级目录是spark-UUID.randomUUID的16位uuid,二级目录最多不超过64个目录,以数据命名,文件名以block.name命名.
   * */
 private[spark] class DiskStore(conf: SparkConf, diskManager: DiskBlockManager) extends Logging {
 
