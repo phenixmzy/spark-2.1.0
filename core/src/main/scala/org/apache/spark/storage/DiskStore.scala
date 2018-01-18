@@ -31,6 +31,11 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 /**
  * Stores BlockManager blocks on disk.
  */
+/**
+  * 存储BlockManager数据块到磁盘中.
+  * 其主要提供put/get方法对数据块进行读取和写入操作.
+  * 磁盘数据存储在spark.local.dir目录中,而块数据存放在该目录对二级目录下,存放目录有BlockManager来决定,具体是BlockManager＃getFile.
+  * */
 private[spark] class DiskStore(conf: SparkConf, diskManager: DiskBlockManager) extends Logging {
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
@@ -88,6 +93,7 @@ private[spark] class DiskStore(conf: SparkConf, diskManager: DiskBlockManager) e
     val channel = new RandomAccessFile(file, "r").getChannel
     Utils.tryWithSafeFinally {
       // For small files, directly read rather than memory map
+      // 小文件则直接读取到buf中返回ChunkedByteBuffer;大文件则用内存映射再返回ChunkedByteBuffer对象
       if (file.length < minMemoryMapBytes) {
         val buf = ByteBuffer.allocate(file.length.toInt)
         channel.position(0)
