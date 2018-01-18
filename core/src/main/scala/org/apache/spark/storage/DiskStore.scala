@@ -107,6 +107,7 @@ private[spark] class DiskStore(conf: SparkConf, diskManager: DiskBlockManager) e
         buf.flip()
         new ChunkedByteBuffer(buf)
       } else {
+        //将指定通道的文件区域映射到内存中
         new ChunkedByteBuffer(channel.map(MapMode.READ_ONLY, 0, file.length))
       }
     } {
