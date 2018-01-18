@@ -39,6 +39,9 @@ import org.apache.spark.storage.{BlockId, StorageLevel}
  * Opened blocks are registered with the "one-for-one" strategy, meaning each Transport-layer Chunk
  * is equivalent to one Spark-level shuffle block.
  */
+/**
+  * 当executor启动时,会启动rpc监听器,当监听到消息时把消息传递到该类进行处理,处理消息有两种类型,读取数据块OpenBlock和写入数据块UpdateBlock.
+  * */
 class NettyBlockRpcServer(
     appId: String,
     serializer: Serializer,

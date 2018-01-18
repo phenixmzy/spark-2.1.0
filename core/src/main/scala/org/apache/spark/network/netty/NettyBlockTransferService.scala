@@ -39,6 +39,12 @@ import org.apache.spark.util.Utils
 /**
  * A BlockTransferService that uses Netty to fetch a set of blocks at at time.
  */
+/**
+  * 位shuffle,存储模块提供了一个数据存取接口.基于Netty在传输中的高效与稳定,当接收到数据存取的命令时,通过Netty的RPC框架向指定节点发送消息,
+  * 请求数据提取操作.
+  * 当executor启动时,会启动rpc监听器,当监听到消息(org.apache.spark.network.TransportContext)时
+  * 把消息传递到类NettyBlockRpcServer进行处理,处理消息有两种类型,读取数据块OpenBlock和写入数据块UpdateBlock.
+  * */
 private[spark] class NettyBlockTransferService(
     conf: SparkConf,
     securityManager: SecurityManager,
