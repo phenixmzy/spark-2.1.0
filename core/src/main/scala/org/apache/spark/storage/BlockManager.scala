@@ -507,6 +507,12 @@ private[spark] class BlockManager(
   /**
    * Get block from local block manager as an iterator of Java objects.
    */
+  /**
+    * 本地读取分两个级别,内存读取和磁盘读取.
+    * 当读取磁盘数据后,均存储到内存中.如果数据本身已经反序列化,则反序列化后在存储到内存中;
+    * 如果数据本身不需反序列化,则直接存储内存.
+    *
+    * */
   def getLocalValues(blockId: BlockId): Option[BlockResult] = {
     logDebug(s"Getting local block $blockId")
     blockInfoManager.lockForReading(blockId) match {
@@ -517,29 +523,37 @@ private[spark] class BlockManager(
         val level = info.level
         logDebug(s"Level for block $blockId is $level")
         if (level.useMemory && memoryStore.contains(blockId)) {
+          // 使用内存存储级别,并且数据存储在内存情况
           val iter: Iterator[Any] = if (level.deserialized) {
+            // 存储在内存的数据已经反序列化,直接使用
             memoryStore.getValues(blockId).get
           } else {
+            // 存储在内存的数据被序列化,读取后需要把数据反序列化
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
+          // 数据读取完毕后,返回数据及数据块大小,读取方法等信息
           val ci = CompletionIterator[Any, Iterator[Any]](iter, releaseLock(blockId))
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
+          // 从磁盘中获取数据,由于保存到磁盘的数据是序列化的,读取的数据也是序列化的
           val iterToReturn: Iterator[Any] = {
             val diskBytes = diskStore.getBytes(blockId)
             if (level.deserialized) {
+              // 如果存储的级别需要反序列化,则把读取的数据反序列化,然后存储到内存中
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskBytes.toInputStream(dispose = true))(info.classTag)
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
+              // 如果存储的级别不需要反序列化,则把读取的数据直接存储到内存中
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskBytes)
                 .map {_.toInputStream(dispose = false)}
                 .getOrElse { diskBytes.toInputStream(dispose = true) }
               serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
             }
           }
+          // 数据读取完毕后,返回数据及数据块大小,读取方法等信息
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, releaseLock(blockId))
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
         } else {
@@ -694,6 +708,15 @@ private[spark] class BlockManager(
    * any locks if the block was fetched from a remote block manager. The read lock will
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
+  /**
+    * get方法是读数据的入口点.在读取时分为本地读取和远程节点读取两个步骤.
+    * 本地读取使用getLocalValues方法
+    * 在该方法中根据不同的存储级别直接调用不同存储实现的方法.
+    *
+    * 远程读取使用getRemoteValues方法
+    * 调用getRemoteBytes方法,在该方法中调用远程数据传输服务类BlockTransfetService#fetchBlockSync进行处理,使用Netty的
+    * fetchBlocks方法获取数据.
+    * */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val local = getLocalValues(blockId)
     if (local.isDefined) {
