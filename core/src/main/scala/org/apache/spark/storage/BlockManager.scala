@@ -1030,6 +1030,19 @@ private[spark] class BlockManager(
    * @return None if the block was already present or if the put succeeded, or Some(iterator)
    *         if the put failed.
    */
+  /**
+    * 写数据的入口点.
+    * 方法会根据数据是否缓存到内存进行处理.
+    * 如果缓存到内存,则根据数据存储级别是否设置了反序列化进行判断:
+    * --进行了反序列化,则数据时值类型,直接调用memoryStore.putIteratorAsValues
+    * --没有进行反序列化,则数据时字节类型,调用memoryStore.putIteratorAsBytes
+    * 写入到内存前,会先判断数据展开是否有足够内存空间,如果内存空间足够,put内存,否则写磁盘.
+    *
+    * 如果写到磁盘:
+    * 调用 diskStore.put 写到磁盘
+    *
+    * 数据写入完成后,会发送消息给driver端的BlockManagerMasterEndpoint更新元数据,同时判断是否需要创建副本,如果需要则调用
+    * */
   private def doPutIterator[T](
       blockId: BlockId,
       iterator: () => Iterator[T],
