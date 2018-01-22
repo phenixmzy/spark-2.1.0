@@ -35,7 +35,7 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils}
   * */
 private[spark]
 class BlockManagerMaster(
-    var driverEndpoint: RpcEndpointRef,
+    var driverEndpoint: RpcEndpointRef, //BlockManagerMasterEndpointRef
     conf: SparkConf,
     isDriver: Boolean)
   extends Logging {

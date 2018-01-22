@@ -163,7 +163,7 @@ private[spark] class MemoryStore(
   /**
    * Attempt to put the given block in memory store as values.
    *
-   * It's possible that the iterator is too large to materialize and store in memory. To avoid
+   * It's possible that the iterator is too large to materialize(实现,实质化,使具体化) and store in memory. To avoid
    * OOM exceptions, this method will gradually unroll the iterator while periodically checking
    * whether there is enough free memory. If the block is successfully materialized, then the
    * temporary unroll memory used during the materialization is "transferred" to storage memory,
@@ -176,6 +176,26 @@ private[spark] class MemoryStore(
    *         `close()` on it in order to free the storage memory consumed by the partially-unrolled
    *         block.
    */
+  /**
+    * 尝试把数据块以值的类型写入到内存存储中.
+    *
+    * 值类型的数据写入.
+    * 1)数据块展开前,先为该展开线程获取初始化内存,大小为unrollMemoryThreshold,获取完毕后返回是否成功的结果keepUnrolling.
+    * 2)values: Iterator中存在元素,并且keepUnrolling为真,继续向前遍历,elementsUnrolled自增1;
+    * 如果遍历到头了或者keepUnrolling为假,则跳到 4)
+    * 3)每当展开次数达到16次时,进行一次检查展开的内存大小是否超过当前分配的内存.
+    * 如果没有超过,继续展开;
+    * 如果超过,则根据增长因子,计算要增加的内存大小,然后申请要增加内存的大小:
+    * currentSize(当前展开的大小)*memoryGrowthFactor(增长因子) - memoryThreshold(当前分配的内存大小),
+    * 如果申请成功,则把内存大小加入到已使用内存中,而该展开线程获取的内存大小为:currentSize(当前展开的大小)*memoryGrowthFactor(增长因子)
+    * 4)判断数据块是否在内存展开成功,如果成功进行下一步;如果失败,则记录内存不足并退出.
+    * 5)先估算内存中存储的大小,然后比较数据块展开的内存(a)与数据块在内存中大小(b),
+    * 如果a <= b,则说明内存不足,需要申请差值,如果申请成功,调用transferUnrollToStorage处理.
+    * 如果a > b,则说明内存大小足以存放展开的数据,那么先释放多余的内存,再调用transferUnrollToStorage处理.
+    * 6)释放数据块在内存展开的空间,然后判断内存是否足够写数据;
+    * 如果足够则把数据块放入内存的entries(实体)中,否则返回内存不足,写入错误的信息.
+    *
+    * */
   private[storage] def putIteratorAsValues[T](
       blockId: BlockId,
       values: Iterator[T],
@@ -184,23 +204,30 @@ private[spark] class MemoryStore(
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
     // Number of elements unrolled so far
+    // 内存展开的元素数量
     var elementsUnrolled = 0
     // Whether there is still enough memory for us to continue unrolling this block
+    // 获取足够的内存完毕后,返回是否成功的结果keepUnrolling
     var keepUnrolling = true
     // Initial per-task memory to request for unrolling blocks (bytes).
+    // 数据块展开前,先为该展开线程获取初始化内存,大小为unrollMemoryThreshold,用来展开数据块
     val initialMemoryThreshold = unrollMemoryThreshold
     // How often to check whether we need to request more memory
+    // 定期检查内存
     val memoryCheckPeriod = 16
     // Memory currently reserved by this task for this particular unrolling operation
     var memoryThreshold = initialMemoryThreshold
     // Memory to request as a multiple of current vector size
+    // 内存的增长因子,每次请求的内存大小为:该因子 * vector的大小 - memoryThreshold
     val memoryGrowthFactor = 1.5
     // Keep track of unroll memory used by this particular block / putIterator() operation
+    // 跟踪该数据块展开该数据所使用的内存
     var unrollMemoryUsedByThisBlock = 0L
     // Underlying vector for unrolling the block
     var vector = new SizeTrackingVector[T]()(classTag)
 
     // Request enough memory to begin unrolling
+    // 1)数据块展开前,先为该展开线程获取初始化内存,大小为unrollMemoryThreshold,获取完毕后返回是否成功的结果keepUnrolling.
     keepUnrolling =
       reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, MemoryMode.ON_HEAP)
 
@@ -212,8 +239,21 @@ private[spark] class MemoryStore(
     }
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
+    // 2)values: Iterator中存在元素,并且keepUnrolling为真,继续向前遍历,elementsUnrolled自增1;
+    // 如果遍历到头了或者keepUnrolling为假,则跳到 4)
+    // 3)每当展开次数达到16次时,进行一次检查展开的内存大小是否超过当前分配的内存.
+    // 如果没有超过,继续展开;
+    // 如果超过,则根据增长因子,计算要增加的内存大小,然后申请要增加内存的大小:
+    // currentSize(当前展开的大小)*memoryGrowthFactor(增长因子) - memoryThreshold(当前分配的内存大小),
+    // 如果申请成功,则把内存大小加入到已使用内存中,而该展开线程获取的内存大小为:currentSize(当前展开的大小)*memoryGrowthFactor(增长因子)
     while (values.hasNext && keepUnrolling) {
       vector += values.next()
+      // 步步为营,定期检查内存
+      // 3)每当展开次数达到16次时,进行一次检查展开的内存大小是否超过当前分配的内存.
+      // 如果没有超过,继续展开;
+      // 如果超过,则根据增长因子,计算要增加的内存大小,然后申请要增加内存的大小:
+      // currentSize(当前展开的大小)*memoryGrowthFactor(增长因子) - memoryThreshold(当前分配的内存大小),
+      // 如果申请成功,则把内存大小加入到已使用内存中,而该展开线程获取的内存大小为:currentSize(当前展开的大小)*memoryGrowthFactor(增长因子)
       if (elementsUnrolled % memoryCheckPeriod == 0) {
         // If our vector's size has exceeded the threshold, request more memory
         val currentSize = vector.estimateSize()
@@ -230,14 +270,17 @@ private[spark] class MemoryStore(
       }
       elementsUnrolled += 1
     }
-
+    // 4)判断数据块是否在内存展开成功,如果成功进行下一步;如果失败,则记录内存不足并退出.
     if (keepUnrolling) {
+      // 判断数据块是否在内存展开成功,如果成功进行下一步
       // We successfully unrolled the entirety of this block
       val arrayValues = vector.toArray
       vector = null
       val entry =
         new DeserializedMemoryEntry[T](arrayValues, SizeEstimator.estimate(arrayValues), classTag)
       val size = entry.size
+      // 6)释放数据块在内存展开的空间,然后判断内存是否足够写数据;
+      // 如果足够则把数据块放入内存的entries(实体)中,否则返回内存不足,写入错误的信息.
       def transferUnrollToStorage(amount: Long): Unit = {
         // Synchronize so that transfer is atomic
         memoryManager.synchronized {
@@ -247,6 +290,9 @@ private[spark] class MemoryStore(
         }
       }
       // Acquire storage memory if necessary to store this block in memory.
+      // 5)先估算内存中存储的大小,然后比较数据块展开的内存(a)与数据块在内存中大小(b),
+      // 如果a <= b,则说明内存不足,需要申请差值,如果申请成功,调用transferUnrollToStorage处理.
+      // 如果a > b,则说明内存大小足以存放展开的数据,那么先释放多余的内存,再调用transferUnrollToStorage处理.
       val enoughStorageMemory = {
         if (unrollMemoryUsedByThisBlock <= size) {
           val acquiredExtra =
@@ -284,6 +330,7 @@ private[spark] class MemoryStore(
       }
     } else {
       // We ran out of space while unrolling the values for this block
+      // 如果失败,则记录内存不足并退出.
       logUnrollFailureMessage(blockId, vector.estimateSize())
       Left(new PartiallyUnrolledIterator(
         this,
@@ -310,6 +357,9 @@ private[spark] class MemoryStore(
    *         iterator or call `discard()` on it in order to free the storage memory consumed by the
    *         partially-unrolled block.
    */
+  /**
+    * 字节码类型的数据写入
+    * */
   private[storage] def putIteratorAsBytes[T](
       blockId: BlockId,
       values: Iterator[T],

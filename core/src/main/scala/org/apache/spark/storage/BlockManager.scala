@@ -1055,36 +1055,47 @@ private[spark] class BlockManager(
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
       // Size of the block in bytes
       var size = 0L
+      //数据放到内存中
       if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
+        //存储级别设置了反序列化,直接调用putIteratorAsValues存储到内存中.
         if (level.deserialized) {
           memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
+              //写入内存成功,返回数据大小
               size = s
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
+              // 数据展开后没有足够的内存空间,如果存储级别设置了磁盘,则写入到磁盘上.
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
+                // 调用diskStore.put(blockId)把数据块写入到磁盘
                 diskStore.put(blockId) { fileOutputStream =>
                   serializerManager.dataSerializeStream(blockId, fileOutputStream, iter)(classTag)
                 }
+                // 写入磁盘成功,返回数据块大小
                 size = diskStore.getSize(blockId)
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
           }
         } else { // !level.deserialized
+          // 数据块写入到内存,但没有设置反序列化,调用memoryStore.putIteratorAsBytes写到内存中
           memoryStore.putIteratorAsBytes(blockId, iterator(), classTag, level.memoryMode) match {
             case Right(s) =>
+              // 写入成功,返回数据块大小
               size = s
             case Left(partiallySerializedValues) =>
               // Not enough space to unroll this block; drop to disk if applicable
+              // 数据展开后没有足够的内存空间,如果存储级别设置了磁盘,则写入到磁盘上.
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
+                // 调用diskStore.put(blockId)把数据块写入到磁盘
                 diskStore.put(blockId) { fileOutputStream =>
                   partiallySerializedValues.finishWritingToStream(fileOutputStream)
                 }
+                // 写入磁盘成功,返回数据块大小
                 size = diskStore.getSize(blockId)
               } else {
                 iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
@@ -1092,10 +1103,12 @@ private[spark] class BlockManager(
           }
         }
 
-      } else if (level.useDisk) {
+      } else if (level.useDisk) { // 数据放到磁盘中
+        // 调用diskStore.put(blockId) 把数据块写入到磁盘
         diskStore.put(blockId) { fileOutputStream =>
           serializerManager.dataSerializeStream(blockId, fileOutputStream, iterator())(classTag)
         }
+        // 写入磁盘成功,返回数据块大小
         size = diskStore.getSize(blockId)
       }
 
@@ -1103,15 +1116,17 @@ private[spark] class BlockManager(
       val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
       if (blockWasSuccessfullyStored) {
         // Now that the block is in either the memory or disk store, tell the master about it.
+        // 现在数据块已经写入成功,要么在内存中,要么在磁盘上.所以需要更新元数据信息到driver上的BlockManagerMaster
         info.size = size
         if (tellMaster && info.tellMaster) {
           reportBlockStatus(blockId, putBlockStatus)
         }
         addUpdatedBlockStatusToTaskMetrics(blockId, putBlockStatus)
         logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
+        // 如果数据块设置了副本数大于1,则把数据块复制到其他节点上
         if (level.replication > 1) {
           val remoteStartTime = System.currentTimeMillis
-          val bytesToReplicate = doGetLocalBytes(blockId, info)
+          val bytesToReplicate = doGetLocalBytes(blockId, info) //要复制的数据块字节
           // [SPARK-16550] Erase the typed classTag when using default serialization, since
           // NettyBlockRpcServer crashes when deserializing repl-defined classes.
           // TODO(ekl) remove this once the classloader issue on the remote end is fixed.
