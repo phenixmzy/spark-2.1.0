@@ -246,7 +246,7 @@ private[spark] class MemoryStore(
     // 如果超过,则根据增长因子,计算要增加的内存大小,然后申请要增加内存的大小:
     // currentSize(当前展开的大小)*memoryGrowthFactor(增长因子) - memoryThreshold(当前分配的内存大小),
     // 如果申请成功,则把内存大小加入到已使用内存中,而该展开线程获取的内存大小为:currentSize(当前展开的大小)*memoryGrowthFactor(增长因子)
-    while (values.hasNext && keepUnrolling) {
+    while (values.hasNext && keepUnrolling) {//内存中安全展开该数据块,定期判断是否超过分配内存大小
       vector += values.next()
       // 步步为营,定期检查内存
       // 3)每当展开次数达到16次时,进行一次检查展开的内存大小是否超过当前分配的内存.
@@ -330,7 +330,7 @@ private[spark] class MemoryStore(
       }
     } else {
       // We ran out of space while unrolling the values for this block
-      // 如果失败,则记录内存不足并退出.
+      // 如果失败,则记录内存不足并退出.内存不足无法展开
       logUnrollFailureMessage(blockId, vector.estimateSize())
       Left(new PartiallyUnrolledIterator(
         this,

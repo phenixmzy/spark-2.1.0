@@ -56,10 +56,12 @@ private[spark] class DiskStore(conf: SparkConf, diskManager: DiskBlockManager) e
     }
     logDebug(s"Attempting to put block $blockId")
     val startTime = System.currentTimeMillis
+    // 获取需要写入文件句柄
     val file = diskManager.getFile(blockId)
     val fileOutputStream = new FileOutputStream(file)
     var threwException: Boolean = true
     try {
+      // 使用回调方法,写入前需要把值类型数据序列化成数据流
       writeFunc(fileOutputStream)
       threwException = false
     } finally {
