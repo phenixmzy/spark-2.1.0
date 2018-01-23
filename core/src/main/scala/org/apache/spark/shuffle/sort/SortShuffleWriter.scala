@@ -47,8 +47,18 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
-  /** Write a bunch of records to this task's output */
+  /** Write a bunch(一串) of records to this task's output */
+  /**
+    * 1) 先判断Shuffle Map Task输出结果在Map端是否需要合并,如果需要则外部进行聚合并排序;如果不需要则在外部排序中不进行聚合并排序.
+    * 比如:sortByKey操作在Reduce端会进行聚合并排序.
+    * 2) 确认外部排序方式后,在外部排序中使用PartitionAppendOnlyMap来存放数据,当排序中的Map占用的内存已经超越了使用的阀值,
+    * 则将Map中的内容溢写到磁盘中,每一次溢写产生一个不同的文件.
+    * 当所有数据处理完毕后,在外部排序中有可能一部分计算结果在内存中,另一部分在溢写的磁盘的一个或多个文件之中,这时通过merge操作将
+    * 内存和spill文件中的内容合并整到一个文件里面.
+    * */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // 先判断Shuffle Map Task输出结果在Map端是否需要合并,如果需要则外部进行聚合并排序;如果不需要则在外部排序中不进行聚合并排序.
+    // 比如:sortByKey操作在Reduce端会进行聚合并排序.
     sorter = if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
       new ExternalSorter[K, V, C](
@@ -60,17 +70,24 @@ private[spark] class SortShuffleWriter[K, V, C](
       new ExternalSorter[K, V, V](
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
+    // 根据获取的排序方式,对数据进行排序并写入到内存缓冲区中.如果排序中的Map占用的内存已经超过了阀值,则将Map中的内容spill到
+    // 磁盘中,每一次spill产生一个不同的文件.
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
+    // 通过shuffle编号和Map编号获取该数据文件
     val output = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
     val tmp = Utils.tempFileWith(output)
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
+      // 在外部排序中有可能一部分计算结果在内存中,另一部分计算结果spill到磁盘的一个或多个文件之中,这时通过merge操作将内存
+      // 和spill文件中的内容合并整到一个文件里面.
       val partitionLengths = sorter.writePartitionedFile(blockId, tmp)
+      // 创建索引文件,将每个partition在暑假文件中的起始位置和结束位置写入的索引文件
       shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)
+      // 将元数据信息写入到MapStatus中,后继的任务可以通过该MapStatus得到处理结果的信息
       mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
     } finally {
       if (tmp.exists() && !tmp.delete()) {

@@ -175,12 +175,17 @@ private[spark] class ExternalSorter[K, V, C](
    * Exposed for testing.
    */
   private[spark] def numSpills: Int = spills.size
-
+  /**
+    * 1)先判断是否需要进行聚合(Aggregation),如果需要,则根据键值进行合并(combine),
+    * 2)然后把这些数据写入到缓冲区中,如果排序中的Map占用的内存超过了使用阀值,则将Map中的内容spill到磁盘中.每一次spill
+    * 产生一个不同的文件.如果不需要聚合,则直接把数据写入内存缓冲区.
+    * */
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
-
+    //判断是否需要进行聚合(Aggregation)
     if (shouldCombine) {
+      // 如果需要进行聚合,使用AppendOnlyMap根据健值在内存中进行合并
       // Combine values in-memory first using our AppendOnlyMap
       val mergeValue = aggregator.get.mergeValue
       val createCombiner = aggregator.get.createCombiner
@@ -192,9 +197,11 @@ private[spark] class ExternalSorter[K, V, C](
         addElementsRead()
         kv = records.next()
         map.changeValue((getPartition(kv._1), kv._1), update)
+        //对数据进行排序并写入到缓冲区中,如果排序中的Map占用的内存超过了使用阀值,则将Map中的内容spill到磁盘中.每一次spill产生一个不同的文件.
         maybeSpillCollection(usingMap = true)
       }
     } else {
+      // 如果不需要聚合,对数据进行排序并写入内存缓冲区.
       // Stick values into our buffer
       while (records.hasNext) {
         addElementsRead()
