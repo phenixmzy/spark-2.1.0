@@ -161,6 +161,10 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     * BlockManagerId,
     * Seq[(blockId,blockIdSize)]
     * 描述了block被存储在block manager上并且size的情况.
+    *
+    * 该方法由executor的MapOutputTracker发生获取结果状态的GetMapOutputStatus消息给Driver端的MapOutputTrackerMaster,
+    * 请求获取上游shuffle输出的计算结果对应的MapStatus,在MapStatus里面存放了结果数据的位置信息.
+    *
     * */
   def getMapSizesByExecutorId(shuffleId: Int, startPartition: Int, endPartition: Int)
       : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {

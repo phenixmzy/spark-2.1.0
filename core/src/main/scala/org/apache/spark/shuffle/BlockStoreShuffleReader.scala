@@ -28,6 +28,9 @@ import org.apache.spark.util.collection.ExternalSorter
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
  * requesting them from other nodes' block stores.
  */
+/**
+  * 该类用来通过shuffle请求其他节点的数据块存储,提取和读取partition范围内的分区
+  * */
 private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
     startPartition: Int,
@@ -41,6 +44,39 @@ private[spark] class BlockStoreShuffleReader[K, C](
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */
+  /**
+    * 这里会解答两个问题:
+    * 1)shuffle写存在Hash和sort两种方式,当读取时如何对应相应的读取方式.
+    * 答案是:会根据不同的shuffle写入方式,采用相同的读取方式,然后写入到Hash列表中便于后继处理.
+    * 在SparkEnv初始化过程中,会实例化ShuffleManager,BlockManager,MapOutputTracker等实例.其中ShuffleManager存在HashShuffleManager和
+    * SortShuffleManager以及用户自定义的ShuffleManager.
+    * 对于HashShuffleManager和SortShuffleManager在shuffle读取中均实例化BlockStoreShuffleReader,不同的是
+    * HashShuffleManager持有FileShuffleBlockResolver和IndexShuffleBlockResolver
+    *
+    * 2)如何确定下游任务所读取数据的位置信息,位置信息包括所在节点,Executor编号和读取数据块序列.
+    * 答案是:发送消息到Driver端的MapOutputTrackerMaster,可以获得上游shuffle的计算结果,通过MapStatus对象返回.
+    *
+    * shuffle read过程步骤:
+    * 1在SparkEnv初始化过程中,会实例化ShuffleManager,BlockManager,MapOutputTracker等实例.其中ShuffleManager存在HashShuffleManager和
+    * SortShuffleManager以及用户自定义的ShuffleManager.
+    * 对于HashShuffleManager和SortShuffleManager在shuffle读取中均实例化BlockStoreShuffleReader,不同的是
+    * HashShuffleManager持有FileShuffleBlockResolver和IndexShuffleBlockResolver
+    *
+    * 2 mapOutputTracker.getMapSizesByExecutorId的调用便是由Executor的MapOutputTracker发送获取结果状态的GetMapOutputStatus的消息
+    * 发送消息到Driver端的MapOutputTrackerMaster,请求获取上游shuffle的输出结果的MapStatus.
+    *
+    * 3 获取这些shuffle结果位置后,会进行位置筛选,判断当前运行的数据是从本地读取还是远端拉取.
+    * 如果是本地读取,直接BlockManager.getBlockData,在读取数据时会根据不同的写入方式采用不同的ShuffleBlockResolver(数据块解析器)进行读取;
+    * 如果是远程读取,需要通过Netty网络的方式拉取数据并读取.在远程读取的过程中会采用多线程读取,一般来说会启动5个线程分别从5个节点上读取所有所需数据,
+    * 每次请求的大小不会超过系统设置的1/5,该大小的设置参数是由spark.reducer.maxSizeInFlight进行配置.
+    *
+    * 4 读取数据后,判断shuffle依赖是不是定义聚合(Aggregation).如果需要则根据健值聚合.
+    * 需要注意的是,如果上游ShuffleMapTask已经做了聚合,则在合并数据的基础上进行聚合.待数据处理完毕后,使用外部排序对数据进行排序并放入到存储中,
+    * 至此完成shuffle读操作.
+    *
+    * Shuffle读对起点是由这个方法ShuffledRDD#compute发起.
+    *
+    * */
   override def read(): Iterator[Product2[K, C]] = {
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,
