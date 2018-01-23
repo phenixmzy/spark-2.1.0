@@ -75,9 +75,9 @@ private[spark] class ShuffleMapTask(
   }
 
 　/**
-    * 对于ShuffleMapTask而言,它的计算结果会写到BlockManager之中,最终返回给DAGScheduler的是一个MapStatus对象.该对象中管理了
-    * ShuffleMapTask的运算结果存储到BlockManager里面的相关信息,而不是计算结果本身,这些存储信息将会为下一阶段的任务需要获取的
-    * 输入数据时的依据.
+    * 对于ShuffleMapTask而言,它的计算结果会写到BlockManager之中,最终返回给DAGScheduler的是一个MapStatus对象.
+    * 该对象中管理了ShuffleMapTask的运算结果存储到BlockManager里面的相关信息,而不是计算结果本身,
+    * 这些存储信息将会为下一阶段的任务需要获取的输入数据时的依据.
     */
   override def runTask(context: TaskContext): MapStatus = {
     // Deserialize the RDD using the broadcast variable.
@@ -99,8 +99,9 @@ private[spark] class ShuffleMapTask(
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
-      //首先调用rdd.iterator,如果该RDD已经Cache或checkpoint,那么直接读取结果;
-      //否则进行计算,计算结果会保存在本地系统的BlockManager中;
+      // 首先调用rdd.iterator,如果该RDD已经Cache或checkpoint,那么直接读取结果;
+      // 否则进行计算,计算结果会保存在本地系统的BlockManager中;
+      // 调用RDD进行计算,writer.write方法会将RDD的计算结果持久化.
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       //关闭writer,返回计算结果,返回包含了数据的location和size等元数据信息的MapStatus信息
       writer.stop(success = true).get

@@ -28,13 +28,21 @@ import org.apache.spark.util.Utils
 /**
  * A class for writing JVM objects directly to a file on disk. This class allows data to be appended
  * to an existing block. For efficiency, it retains the underlying file channel across
- * multiple commits. This channel is kept open until close() is called. In case of faults,
+ * multiple commits. This channel is kept open until close() is called. In case of faults(万一发生故障),
  * callers should instead close with revertPartialWritesAndClose() to atomically revert the
  * uncommitted partial writes.
  *
  * This class does not support concurrent writes. Also, once the writer has been opened it cannot be
  * reopened again.
  */
+/**
+  * 该类是把jvm对象直接写到一个磁盘文件中.这个类允许数据被append到已经存在的block中.
+  * 为了效率,它保留了多个提交到底层的file channel.channel会保持打开,直到调用close.
+  * 万一发生故障,用户应该关闭revertpartialwritesandclose()自动恢复未提交的部分writes,
+  * 这个类不支持并发写,一旦被打开就不能再次重新open.
+  *
+  *
+  * */
 private[spark] class DiskBlockObjectWriter(
     val file: File,
     serializerManager: SerializerManager,
