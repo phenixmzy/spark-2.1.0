@@ -141,6 +141,13 @@ private[spark] class Client(
    * creating applications and setting up the application submission context. This was not
    * available in the alpha API.
    */
+  /**
+    * 提交一个application用于运行ApplicationMaster.
+    * 稳定的Yarn API提供了一个方便的方法（YarnClient#createApplication）创建一个application并设置application提交的上下文.
+    * 这对alpha版本不会有效.
+    *
+    * 先向ResourceManager确认是否又足够的资源.如果有则构造用于启动ApplicationMaster环境并提交应用程序到Yarn集群中.
+    * */
   def submitApplication(): ApplicationId = {
     var appId: ApplicationId = null
     try {
@@ -148,6 +155,7 @@ private[spark] class Client(
       // Setup the credentials before doing anything else,
       // so we have don't have issues at any point.
       setupCredentials()
+      //创建YarnClient用于与Yarn进行交互
       yarnClient.init(yarnConf)
       yarnClient.start()
 
@@ -155,6 +163,7 @@ private[spark] class Client(
         .format(yarnClient.getYarnClusterMetrics.getNumNodeManagers))
 
       // Get a new application from our RM
+      // 向RM申请一个新的application
       val newApp = yarnClient.createApplication()
       val newAppResponse = newApp.getNewApplicationResponse()
       appId = newAppResponse.getApplicationId()
@@ -164,14 +173,17 @@ private[spark] class Client(
       new CallerContext("CLIENT", Option(appId.toString)).setCurrentContext()
 
       // Verify whether the cluster has enough resources for our AM
+      // 判断集群是否拥有足够的资源用于启动AM,如果资源不足会直接抛出异常
       verifyClusterResources(newAppResponse)
 
       // Set up the appropriate contexts to launch our AM
+      // 构造相应对运行环境用于运行AM
       val containerContext = createContainerLaunchContext(newAppResponse)
       val appContext = createApplicationSubmissionContext(newApp, containerContext)
 
       // Finally, submit and monitor the application
       logInfo(s"Submitting application $appId to ResourceManager")
+      // 向Yarn提交并监控application
       yarnClient.submitApplication(appContext)
       appId
     } catch {

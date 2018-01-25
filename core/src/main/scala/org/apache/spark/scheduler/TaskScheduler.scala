@@ -30,6 +30,10 @@ import org.apache.spark.util.AccumulatorV2
  * them, retrying if there are failures, and mitigating stragglers. They return events to the
  * DAGScheduler.
  */
+/**
+  * TaskScheduler是一个很重要的类,其为高层调度器DAGScheduler和SchedulerBackend之间的桥梁.
+  * TaskScheduler负责具体任务的调度,而SchedulerBackend则负责application运行期间与底层的资源管理器(ResourceManager)进行交互.
+  * */
 private[spark] trait TaskScheduler {
 
   private val appId = "spark-application-" + System.currentTimeMillis

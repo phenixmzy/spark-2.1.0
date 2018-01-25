@@ -25,6 +25,16 @@ package org.apache.spark.scheduler
 /**
   * 调度系统的后台接口,它允许插入不同的TaskSchedulerImpl.我们假定了一个类似于Mesos的模型它能为application提供资源获取机制,运行task.
   * 位于TaskScheduler下层，用于对接不同的资源管理系统，SchedulerBackend是个接口，需要实现的主要方法如下.
+  * 
+  * SchedulerBackend是一个trait,子类行会根据不同的运行模式分为本地运行模式,粗粒度运行模式(CoarseGrainedSchedulerBackend),细粒度Mesos运行模式(MesosSchedulerBackend).
+  * 本地运行模式:LocalBackend
+  * 粗粒度运行模式:分为standalone运行模式,Yarn运行模式,Mesos粗粒度运行模式
+  *   -standalone运行模式:SparkDeploySchedulerBackend)
+  *   -Yarn运行模式:对应于YarnSchedulerBackend,Yarn运行模式又包含:
+  *     Yarn-client的YarnClientScheduler
+  *     Yarn-cluster的YarnClusterSchedulerBackend
+  *   -Mesos粗粒度运行模式:CoarseMesosSchedulerBackend
+  * 细粒度运行模式:MesosSchedulerBackend
   * */
 private[spark] trait SchedulerBackend {
   private val appId = "spark-application-" + System.currentTimeMillis

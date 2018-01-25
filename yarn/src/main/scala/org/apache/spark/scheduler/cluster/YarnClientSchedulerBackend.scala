@@ -52,6 +52,7 @@ private[spark] class YarnClientSchedulerBackend(
     logDebug("ClientArguments called with: " + argsArrayBuf.mkString(" "))
     val args = new ClientArguments(argsArrayBuf.toArray)
     totalExpectedExecutors = YarnSparkHadoopUtil.getInitialTargetExecutorNumber(conf)
+    //启动client
     client = new Client(args, conf)
     bindToYarn(client.submitApplication(), None)
 

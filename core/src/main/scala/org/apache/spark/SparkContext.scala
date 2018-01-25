@@ -2532,6 +2532,15 @@ object SparkContext extends Logging {
    * Create a task scheduler based on a given master URL.
    * Return a 2-tuple of the scheduler backend and the task scheduler.
    */
+  /**
+    *
+    * yarn-client模式时
+    * 通过反射初始化YarnScheduler和YarnClientSchedulerBackend两个对象,其中YarnScheduler是TaskSchedulerImpl的子类,
+    * YarnClientSchedulerBackend是CoarseGrinedSchedulerBackend
+    *
+    *
+    *
+    * */
   private def createTaskScheduler(
       sc: SparkContext,
       master: String,

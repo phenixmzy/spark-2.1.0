@@ -35,6 +35,9 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils}
  * Abstract Yarn scheduler backend that contains common logic
  * between the client and cluster Yarn scheduler backends.
  */
+/**
+  *
+  * */
 private[spark] abstract class YarnSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext)
