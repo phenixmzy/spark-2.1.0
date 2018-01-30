@@ -41,7 +41,8 @@ import org.apache.spark.util.Utils
   *
   * Standalone的运行流程:
   * 1 启动应用程序,在SparkContext启动过程中,先初始化DAGScheduler,TaskSchedulerImpl,同事初始化该类StandaloneSchedulerBackend,并在其
-  * 内部启动终端点DriverEndpoint,ClientEndpoint／StandaloneAppClient.
+  * 内部启动终端点DriverEndpoint(CoarseGrainedSchedulerBackend#DriverEndpoint,StandaloneSchedulerBackend继承自CoarseGrainedSchedulerBackend),
+  * ClientEndpoint(被封装在StandaloneAppClient内进行管理).
   * 2 ClientEndpoint／StandaloneAppClient向Master注册应用程序，Master收到注册信息把该应用加入到等待运行应用列表中，等待由Master分派给Worker.
   * 3 当应用程序获取到Worker时，Master会通知Worker中的终端点WorkerEndpoint创建CoarseGrainedExecutorBackend进程,在该进程中创建执行器Executor.
   * 4 Executor创建完毕后发送消息给Master和DriverEndpoint告知Executor已经创建完毕，在SparkContext成功注册后，等待接收从DriverEndpoint发送的
