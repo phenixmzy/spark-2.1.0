@@ -33,6 +33,25 @@ import org.apache.spark.util.Utils
 /**
  * A [[SchedulerBackend]] implementation for Spark's standalone cluster manager.
  */
+/**
+  * 粗粒度运行模式中的一种,Standalone.
+  * Spark自身实现的资源调度框架,由客户端,Master和Worker节点组成.这种模式SparkContext即可以运行系Master节点上也可以运行在本地客户端.
+  * 当使用Spark-Shell交互工具提交作业或则run-example脚本运行时,SparkContext运行在Master节点上.
+  * 当使用Spark-submit提交或则ide调试提交时,是运行在本地客户端中.
+  *
+  * Standalone的运行流程:
+  * 1 启动应用程序,在SparkContext启动过程中,先初始化DAGScheduler,TaskSchedulerImpl,同事初始化该类StandaloneSchedulerBackend,并在其
+  * 内部启动终端点DriverEndpoint,ClientEndpoint／StandaloneAppClient.
+  * 2 ClientEndpoint／StandaloneAppClient向Master注册应用程序，Master收到注册信息把该应用加入到等待运行应用列表中，等待由Master分派给Worker.
+  * 3 当应用程序获取到Worker时，Master会通知Worker中的终端点WorkerEndpoint创建CoarseGrainedExecutorBackend进程,在该进程中创建执行器Executor.
+  * 4 Executor创建完毕后发送消息给Master和DriverEndpoint告知Executor已经创建完毕，在SparkContext成功注册后，等待接收从DriverEndpoint发送的
+  * 执行任务的消息.
+  * 5 SparkContext分派TaskSet给CoarseGrainedExecutorBackend执行,任务执行是在Executor按照一定的调度策略进行.
+  * 6 CoarseGrainedExecutorBackend在任务处理过程中,把处理任务的状态发送给SparkContext的终端点DriverEndpoint,SparkContext根据任务执行不同的结果
+  * 进行处理.如果任务集处理完毕后，则会继续发送其他任务集.
+  * 7 应用程序运行完成后,SparkContext会进行回收资源,先是CoarseGrainedExecutorBackend，然后注销其自身
+  *
+  * */
 private[spark] class StandaloneSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext,
