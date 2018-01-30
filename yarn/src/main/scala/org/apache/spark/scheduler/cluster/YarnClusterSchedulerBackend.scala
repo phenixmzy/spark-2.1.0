@@ -25,6 +25,17 @@ import org.apache.spark.deploy.yarn.{ApplicationMaster, YarnSparkHadoopUtil}
 import org.apache.spark.scheduler.TaskSchedulerImpl
 import org.apache.spark.util.Utils
 
+/**
+  * 1 客户端提交应用程序时,启动Yarn.Client向Yarn中提交应用程序,包括AM的命令,提交给AM的程序和需要在Executor中运行的程序等.
+  * 2 RM收到请求后,在集群中选择一个NM,为该应用程序分派第一个用于启动运行AM的container.在该AM上运行SparkContext等并进行初始化.
+  * 3 AM向RM注册,用户可以直接通过RM查询application的运行状态,然后它将以轮询的方式申请和获取申请资源,并监控任务的运行状态直到运行结束.
+  * 4 一旦AM申请到资源,便会与NodeManager通信,要求它在获得的container中启动CoarseGrainedExecutorBackend,
+  * CoarseGrainedExecutorBackend启动后会向AM的SparkContext注册并申请TaskSet
+  * 5 AM的SparkContext分配任务集给CoarseGrainedExecutorBackend执行,CoarseGrainedExecutorBackend运行任务并向AM汇报运行的状态和进度,
+  * 让AM随时掌握各task运行状态,从而可以在任务失败时重新启动
+  * 6 application运行完成后,客户端的SparkContext向RM申请注销并关闭自身
+  * */
+
 private[spark] class YarnClusterSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext)

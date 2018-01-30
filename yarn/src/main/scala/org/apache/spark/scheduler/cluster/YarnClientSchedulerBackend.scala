@@ -26,7 +26,21 @@ import org.apache.spark.deploy.yarn.{Client, ClientArguments, YarnSparkHadoopUti
 import org.apache.spark.internal.Logging
 import org.apache.spark.launcher.SparkAppHandle
 import org.apache.spark.scheduler.TaskSchedulerImpl
-
+/**
+  * yarn-client的工作流程:
+  * 1 启动应用程序,在SparkConetxt启动过程中,初始化DAGScheduler和TaskSchedulerImpl调度器,使用反射方法初始化YarnScheduler和
+  * YarnClientSchedulerBackend.YarnClientSchedulerBackend在内部启动终端点DriverEndpoint和Client,
+  * 然后Client向Yarn集群的RM申请启动AM.
+  * 2 RM收到请求后,在集群中选择一个NM,为该应用程序分派第一个用于启动运行AM的container.与yarn-cluster不同的是,
+  * 在该AM上不运行在SparkContext,只与SparkContext联系进行资源分派.
+  * 3 客户端中的SparkContext启动完毕后,与AM建立通信,向RM注册,根据任务信息向RM申请container资源.
+  * 4 一旦AM申请到资源,便会与NodeManager通信,要求它在获得的container中启动CoarseGrainedExecutorBackend,
+  * CoarseGrainedExecutorBackend启动后会向客户端中的SparkContext注册并申请TaskSet.
+  * 5 客户端中的SparkContext分配任务集给CoarseGrainedExecutorBackend执行,CoarseGrainedExecutorBackend运行任务并向
+  * 终端点DriverEndpoint汇报运行的状态和进度,让客户端随时掌握各task运行状态,从而可以在任务失败时重新启动.
+  * 6 application运行完成后,客户端的SparkContext向RM申请注销并关闭自身.
+  *
+  * */
 private[spark] class YarnClientSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext)
