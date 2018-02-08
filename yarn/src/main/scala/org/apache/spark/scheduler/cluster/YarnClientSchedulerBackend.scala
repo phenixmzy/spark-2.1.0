@@ -33,7 +33,7 @@ import org.apache.spark.scheduler.TaskSchedulerImpl
   * 然后Client向Yarn集群的RM申请启动AM.
   * 2 RM收到请求后,在集群中选择一个NM,为该应用程序分派第一个用于启动运行AM的container.与yarn-cluster不同的是,
   * 在该AM上不运行在SparkContext,只与SparkContext联系进行资源分派.
-  * 3 客户端中的SparkContext启动完毕后,与AM建立通信,向RM注册,根据任务信息向RM申请container资源.
+  * 3 客户端中的SparkContext启动完毕后,YarnSchedulerEndpoint与AM建立通信,向RM注册,根据任务信息向RM申请container资源.
   * 4 一旦AM申请到资源,便会与NodeManager通信,要求它在获得的container中启动CoarseGrainedExecutorBackend,
   * CoarseGrainedExecutorBackend启动后会向客户端中的SparkContext注册并申请TaskSet.
   * 5 客户端中的SparkContext分配任务集给CoarseGrainedExecutorBackend执行,CoarseGrainedExecutorBackend运行任务并向
