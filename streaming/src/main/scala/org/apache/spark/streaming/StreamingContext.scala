@@ -60,6 +60,59 @@ import org.apache.spark.util.{CallSite, ShutdownHookManager, ThreadUtils, Utils}
  * `context.awaitTermination()` allows the current thread to wait for the termination
  * of the context by `stop()` or by an exception.
  */
+
+/**
+  *
+  * 一) Spark Streaming运行架构
+  * Spark Streaming功能主要包括流处理引擎的流数据接收与存储,批处理作业的生成与管理.
+  * 而Spark Core负责处理Spark Streaming发送过来的作业.
+  * Spark Streaming分为Driver端和Client端,运行在Driver端为StreamingContext实例,该实例JobScheduler和DStreamGraph.
+  * Spark Streaming处理流数据大致分为4个步骤:
+  * 启动流处理引擎 -> 接收和存储流数据 -> 处理流数据 -> 输出处理结果
+  *
+  * 1) 初始化StreamingContext对象,在该对象启动过程中实例化DStreamGraph和JobScheduler,其中DStreamingGraph用于存放DStream以及Stream之间的依赖关系等信息;
+  * 而JobScheduler中包含ReceiverTracker和JobGenerator,
+  * --ReceiverTracker为Driver端流数据接收器(Receiver)等管理者;
+  * --JobGenerator为批处理作业的生成器;
+  * 在ReceiverTracker 启动过程中,根据流数据接收器(Receiver) 分发策略通知对应的Executor中的流数据接收管理器(ReceiverSupervisor)启动,再由ReceiverSupervisor启动流数据接收器(Receiver).
+  *
+  * 2) 当Receiver启动后,持续不断地接收实时流数据,根据传过来的数据的大小进行判断,如果数据量很小,则多条数据成一块;如果数据量大,则直接进行存储.对于这些数据Receiver直接交由ReceiverSupervisor进行数据转储操作.
+  * 块存储根据设置是否预写日志分为两种,一种是非预写日志,另一种是预写日志.
+  * --非预写日志(BlockManagerBasedBlockHandler方法):直接写到Worker的内存或磁盘中.
+  * --预写日志(WriteAheadLogBasedBlockHandler方法):在预写日志同时把数据写入岛Worker的内存或磁盘中.
+  *
+  * 数据存储完毕后,ReceiverSupervisor会把数据存储的元信息上报给ReceiverTracker,其再把这些信息转发给ReceiverBlockTracker,由它负责管理收到数据块的元信息.
+  *
+  * 3) StreamingContext的JobGenerator中维护了一个定时器,该定时器在批处理时间到来时会进行生成作业的操作,其中步骤如下:
+  * 1. 通知ReceiverTracker 将接收到的数据进行提交,在提交时才用同步关键字(synchronized)进行处理,保证每条数据被划入有且只有一个的Batch中.
+  * 2. 要求DStream依赖关系生成作业序列Seq[Job]
+  * 3. 从第一步中ReceiverTracker 获取本批次数据的元数据.
+  * 4. 把批处理时间time, 作业序列Seq[Job]和本批次数据的元数据包装为JobSet,调用JobScheduler#submitJobSet(JobSet)方法提交给JobScheduler,JobScheduler将把这些作业发送给Spark Core进行处理.该步提交由于是异步,因此执行速度非常快.
+  * 5. 只要提交结束,Spark Streaming对这个系统做一个Checkpoint.
+  *
+  * 4) 在Spark核心的作业对数据进行处理,处理完毕后输出到外部系统.由于实时流数据的数据源源不断流入,Spark会周而复始地进行数据处理,相应也会持续不断输出结果.
+  *
+  *
+  * 二) Streaming通信架构
+  * -Streaming通信总体流程:
+  * 1) 在启动 流处理引擎 过程中,将进行 启动 所有流数据接收器Receiver;
+  * 2) 注册 流数据接收器Receiver两个消息通信;
+  * 3) 在接收存储流数据中,当数据块存储完成后发送添加数据消息;
+  * 4) 而当Spark Streaming停止时,需要发送关闭所有流数据接收器Receiver消息;
+  *
+  * -Streaming通信具体流程:
+  * 1) 在启动流处理引擎过程中,JobScheduler在内部启动ReceiverTracker和ReceiverTrackerEndpoint,
+  * 当ReceiverTracker准备完毕后,向终端点发送StartAllReceivers消息,通知其分发并启动所有流数据接收器Receiver.
+  * 2) 在启动流数据接收器Receiver之前,ReceiverSupervisor会向ReceiverTrackerEndpoint发送RegisterReceiver注册信息,
+  * 当注册成功后,才继续进行流数据接收器Receiver的启动.具体实现在ReceiverSupervisor#startReceiver() 方法中.
+  * 3) 在Receiver接收数据的过程中,当保存完一个数据块时,作为数据转储的管理者ReceiverSuperivosr
+  * 会把数据块的元数据发送给ReceiverTrackerEndpoint,ReceiverTracker再把这些信息转发给ReceiverBlockTracker,
+  * 由它负责管理接收到数据块的元信息.具体实现在ReceiverSupervisorImpl#pushAndReportBlock()方法中.
+  * 4) 当Streaming停止时,ReceiverTracker发送注销所有Receiver的消息,
+  * ReceiverTrackerEndpoint接收到该消息后调用ReceiverTracker#stop()方法进行注销.
+  * 在停止操作过程中,ReceiverTracker会发送两次注销消息,发送两次消息之间的间隔为10s,用于等待流数据接收器Receiver.
+  *
+  * */
 class StreamingContext private[streaming] (
     _sc: SparkContext,
     _cp: Checkpoint,

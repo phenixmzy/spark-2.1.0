@@ -475,12 +475,20 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
     override def receive: PartialFunction[Any, Unit] = {
       // Local messages
+      /**
+        * StartAllReceivers消息
+        * 在启动流处理引擎过程中,JobScheduler在内部启动ReceiverTracker和ReceiverTrackerEndpoint,
+        * 当ReceiverTracker准备完毕后向终端点发送StartAllReceivers消息,通知其分发并启动所有流数据接收器Receiver.
+        * */
       case StartAllReceivers(receivers) =>
+        // 根据流数据接收器分发策略,匹配流数据接收器Receiver和Executor.分发过程有待细读.
         val scheduledLocations = schedulingPolicy.scheduleReceivers(receivers, getExecutors)
         for (receiver <- receivers) {
           val executors = scheduledLocations(receiver.streamId)
           updateReceiverScheduledExecutors(receiver.streamId, executors)
+          // receiverPreferredLocations 在HashMap中保存流数据接收器Receiver首选位置.
           receiverPreferredLocations(receiver.streamId) = receiver.preferredLocation
+          // 在指定的Executor中启动流数据接收器Receiver
           startReceiver(receiver, executors)
         }
       case RestartReceiver(receiver) =>

@@ -33,6 +33,9 @@ import org.apache.spark.util.{ThreadUtils, Utils}
  * Abstract class that is responsible for supervising a Receiver in the worker.
  * It provides all the necessary interfaces for handling the data received by the receiver.
  */
+/**
+  * 它是一个抽象类,负责监管在Worker里面的接收器(Receiver).它也提供了所有必要的接口用来处理通过接收器接收到的数据.
+  * */
 private[streaming] abstract class ReceiverSupervisor(
     receiver: Receiver[_],
     conf: SparkConf
@@ -143,6 +146,7 @@ private[streaming] abstract class ReceiverSupervisor(
   /** Start receiver */
   def startReceiver(): Unit = synchronized {
     try {
+      // 调用子类的ReceiverSupervisor#onReceiverStart()方法,进行注册,如果注册成功,则继续进行流数据接收器(Receiver)的启动.
       if (onReceiverStart()) {
         logInfo(s"Starting receiver $streamId")
         receiverState = Started
@@ -150,6 +154,7 @@ private[streaming] abstract class ReceiverSupervisor(
         logInfo(s"Called receiver $streamId onStart")
       } else {
         // The driver refused us
+        // 如果Driver端的TrackerReceiver拒绝注册或注册失败,则停止流数据接收器,并发送注销流数据接收器DeregisterReceiver消息.
         stop("Registered unsuccessfully because Driver refused to start receiver " + streamId, None)
       }
     } catch {
