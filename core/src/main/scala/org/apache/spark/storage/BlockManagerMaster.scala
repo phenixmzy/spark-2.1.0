@@ -27,14 +27,22 @@ import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.util.{RpcUtils, ThreadUtils}
 /**
+  * BlockManager 在 spark 中扮演的角色
+  * BlockManager 是非常非常重要的一个 spark 组件:
+  * 1. spark  shuffle 的过程总用到了 BlockManager 作为数据的中转站
+  * 2. spark broadcast 调度 task 到多个 executor 的时候,broadCast 底层使用的数据存储层
+  * 3. spark streaming  一个 ReceiverInputDStream 接受到的数据也是先放在 BlockManager 中,
+  * 然后封装为一个 BlockRdd 进行下一步运算的.
+  * 4. 如果我们 对一个 rdd 进行了cache, cacheManager 也是把数据放在了 blockmanager 中， 截断了计算链依赖， 后续task 运行的时候可以直接从 cacheManager 中获取到 cacherdd ，不用再从头计算。
+  *
+  * BlockManager 在一个 spark 应用中作为一个本地缓存运行在所有的节点上,包括运行在所有 driver 和 executor上.
+  * BlockManager 对本地和远程提供一致的 get 和set 数据块接口,BlockManager 本身使用不同的存储方式来存储这些数据,包括 memory,disk,off-heap.
+  *
   * BlockManagerMaster存在于Driver和Executor上.对存在于Executor上的BlockManager进行统一的管理.
   * 比如:
   * 1 Executor需要向Driver发送注册BlockManager;
   * 2 更新Executor上Block的最新信息;
   * 3 询问所需要Block目前所在的位置以及当Executor运行结束需要将此Executor移除等等.
-  *
-  * BlockManager 在一个 spark 应用中作为一个本地缓存运行在所有的节点上,包括运行在所有 driver 和 executor上.
-  * BlockManager 对本地和远程提供一致的 get 和set 数据块接口,BlockManager 本身使用不同的存储方式来存储这些数据,包括 memory,disk,off-heap.
   *
   * 当BlockManager存在于Driver上时,BlockManagerMaster拥有BlockManagerMasterEndpoint 的actor和所有BlockManagerSlaveEndpoint的ref,
   * 可以通过这些引用对 slave 下达命令.
