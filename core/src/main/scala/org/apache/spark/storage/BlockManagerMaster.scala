@@ -35,7 +35,7 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils}
   * */
 private[spark]
 class BlockManagerMaster(
-    var driverEndpoint: RpcEndpointRef, //BlockManagerMasterEndpointRef
+    var driverEndpoint: RpcEndpointRef, //如果isDriver=True 为BlockManagerMasterEndpoint,否则是运行在Executor上,为BlockManagerMasterEndpointRef
     conf: SparkConf,
     isDriver: Boolean)
   extends Logging {
