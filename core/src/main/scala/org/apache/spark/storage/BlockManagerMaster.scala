@@ -32,6 +32,16 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils}
   * 1 Executor需要向Driver发送注册BlockManager;
   * 2 更新Executor上Block的最新信息;
   * 3 询问所需要Block目前所在的位置以及当Executor运行结束需要将此Executor移除等等.
+  *
+  * BlockManager 在一个 spark 应用中作为一个本地缓存运行在所有的节点上,包括运行在所有 driver 和 executor上.
+  * BlockManager 对本地和远程提供一致的 get 和set 数据块接口,BlockManager 本身使用不同的存储方式来存储这些数据,包括 memory,disk,off-heap.
+  *
+  * 当BlockManager存在于Driver上时,BlockManagerMaster拥有BlockManagerMasterEndpoint 的actor和所有BlockManagerSlaveEndpoint的ref,
+  * 可以通过这些引用对 slave 下达命令.
+  *
+  * 当BlockManager存在于Executor节点上的BlockManagerMaster 则拥有BlockManagerMasterEndpoint的ref和自身BlockManagerSlaveEndpoint的actor.
+  * 可以通过 Master的引用注册自己.
+  * 在master 和 slave 可以正常的通信之后,就可以根据设计的交互协议进行交互, 整个分布式缓存系统也就运转起来了.
   * */
 private[spark]
 class BlockManagerMaster(
