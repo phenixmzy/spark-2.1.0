@@ -42,7 +42,13 @@ object RuleExecutor {
     }.mkString("\n", "\n", "")
   }
 }
-
+/**
+  * 对于Rule的具体实现是通过RuleExecutor完成的.凡是需要处理执行计划树进行实施规则匹配和节点处理的都需要继承RuleExecutor抽象类.
+  * RuleExecutor其内部定义了Batch／Once／FixedPoint.
+  * Once和FixedPoint是配置策略,相对应对是对Tree进行一次操作或多次对迭代操作.
+  * 其内部有一个batches: Seq[Batch],定义了RuleExecutor要执行的处理逻辑,逻辑的具体执行由Rule子类实现.
+  *
+  * */
 abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
 
   /**
@@ -58,9 +64,11 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
   case class FixedPoint(maxIterations: Int) extends Strategy
 
   /** A batch of rules. */
+  /** 每一个batch代表一个规则,这样可以简便地／模块块地对Tree进行Transform操作 */
   protected case class Batch(name: String, strategy: Strategy, rules: Rule[TreeType]*)
 
   /** Defines a sequence of rule batches, to be overridden by the implementation. */
+  /** 定义了RuleExecutor对处理逻辑,具体对处理逻辑由具体Rule子类实现. */
   protected def batches: Seq[Batch]
 
 

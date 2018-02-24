@@ -55,6 +55,11 @@ import org.apache.spark.sql.util.ExecutionListenerManager
  * @groupname Ungrouped Support functions for language integrated queries
  * @since 1.0.0
  */
+/**
+  * 在spark 1.x中,该类是处理结构化数据的入口点.
+  * 在spark 2.0起,该类被SparkSession所代替.然而,我们保留该类是为了向下兼容.
+  *
+  * */
 @InterfaceStability.Stable
 class SQLContext private[sql](val sparkSession: SparkSession)
   extends Logging with Serializable {
