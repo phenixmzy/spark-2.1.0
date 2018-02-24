@@ -45,7 +45,15 @@ private[spark] trait RpcEnvFactory {
  */
 /**
   * 进程间调用的一个端点.它的生命周期为constructor -> onStart -> receive* -> onStop .当然还有一些其他方法，都是间触发方法
-  * RPC消息触发的终点,当一个消息到来时,方法调用顺序会保证 onStart -> receive* -> onStop 顺序调用.receive会被同时调用,如果想运行在安全的线程中,要使用ThreadSafeRpcEndpoint.
+  * RPC消息触发的终点,当一个消息到来时,方法调用顺序会保证 onStart -> receive* -> onStop 顺序调用.
+  * receive会被同时调用,如果想运行在安全的线程中,要使用ThreadSafeRpcEndpoint.
+  *
+  * RpcEndpoint定义了RPC通信过程中的通信端对象，除了具有管理一个RpcEndpoint生命周期的操作（constructor -&gt; onStart -> receive* -> onStop），
+  * 并给出了通信过程中一个RpcEndpoint所具有的基于事件驱动的行为（连接、断开、网络异常）,
+  * 实际上对于Spark框架来说主要是接收消息并处理.
+  * 通过上面的receive方法，接收由RpcEndpointRef#send方法发送的消息,该类消息不需要进行响应消息(Reply),
+  * 而只是在RpcEndpoint端进行处理.
+  * 通过receiveAndReply方法，接收由RpcEndpointRef#ask发送的消息,RpcEndpoint端处理完消息后,需要给调用RpcEndpointRef#ask的通信端响应消息(Reply)
   * */
 private[spark] trait RpcEndpoint {
 

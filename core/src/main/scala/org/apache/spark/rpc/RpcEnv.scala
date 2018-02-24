@@ -71,6 +71,22 @@ private[spark] object RpcEnv {
   * RpcEnv rpc的环境.RpcEndpoint需要用一个name向rpcEnv注册以至于RpcEndpoint可以接收msg.
   * RpcEnv会处理来自RpcEndpointRef或者远端节点发送到对应的RpcEndpoint的msg.
   * RpcEnv 会通过提供一些methods查询到对应到RpcEndpointRef.
+  *
+  * 一个RpcEnv是一个RPC环境对象，它负责管理RpcEndpoint的注册，以及如何从一个RpcEndpoint获取到一个RpcEndpointRef.
+  * RpcEndpoint是一个通信端，例如Spark集群中的Master，或Worker，都是一个RpcEndpoint。但是，如果想要与一个RpcEndpoint端进行通信，一定需要获取到该RpcEndpoint一个RpcEndpointRef，而获取该RpcEndpointRef只能通过一个RpcEnv环境对象来获取.
+  * 所以说，一个RpcEnv对象才是RPC通信过程中的“指挥官”，在RpcEnv类中，
+  * 有一个核心的方法：def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef
+  * 通过上面方法，可以注册一个RpcEndpoint到RpcEnv环境对象中，有RpcEnv来管理RpcEndpoint到RpcEndpointRef的绑定关系.
+  * 在注册RpcEndpoint时，每个RpcEndpoint都需要有一个唯一的名称.
+  * Spark中基于Netty实现通信，所以对应的RpcEnv实现为NettyRpcEnv.
+  *
+  * -RpcEndpoint
+  * RpcEndpoint定义了RPC通信过程中的通信端对象，除了具有管理一个RpcEndpoint生命周期的操作（constructor -> onStart -> receive* -> onStop）,
+  * 并给出了通信过程中一个RpcEndpoint所具有的基于事件驱动的行为（连接、断开、网络异常），实际上对于Spark框架来说主要是接收消息并处理.
+  *
+  * -RpcEndpointRef
+  * RpcEndpointRef是一个对RpcEndpoint的远程引用对象，通过它可以向远程的RpcEndpoint端发送消息以进行通信
+  *
   * */
 private[spark] abstract class RpcEnv(conf: SparkConf) {
 

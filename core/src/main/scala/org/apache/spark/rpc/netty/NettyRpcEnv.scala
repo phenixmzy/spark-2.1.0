@@ -39,7 +39,15 @@ import org.apache.spark.network.server._
 import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.apache.spark.util.{ThreadUtils, Utils}
-
+/**
+  *
+  * Spark中基于Netty实现通信，所以对应的RpcEnv实现为NettyRpcEnv,创建NettyRpcEnv对像会创建很多用来处理底层RPC通信的线程和数据结构.
+  * 创建NettyRpcEnv对象，是一个非常重的操作，所以在框架里使用过程中要尽量避免重复创建.
+  * setupEndpoint方法调用NettyRpcEnv内部的Dispatcher对象注册一个RpcEndpoint,
+  * 一个RpcEndpoint只能注册一次（根据RpcEndpoint的名称来检查唯一性），这样在Dispatcher内部注册并维护RpcEndpoint与RpcEndpointRef的绑定关系.
+  * 每一个命名唯一的RpcEndpoint对应一个线程安全的Inbox，所有发送给一个RpcEndpoint的消息，都由对应的Inbox将对应的消息路由给RpcEndpoint进行处理.
+  *
+  * */
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
     javaSerializerInstance: JavaSerializerInstance,
