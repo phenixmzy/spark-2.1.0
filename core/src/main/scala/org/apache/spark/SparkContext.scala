@@ -78,7 +78,8 @@ import org.apache.spark.util._
   * SparkContext:
   * 内置的 DAGScheduler 负责创建 Job,将 DAG 中的 RDD 划 分到不同的 Stage,提交 Stage 等功能。
   * 内置的 TaskScheduler 负责资源的申请、任务 的提交及请求集群对任务的调度等工作。
-  * Spark Driver 用于提交用户应用程序,实际可以看作 Spark 的客户端。Spark Driver 的初始化始终围绕着 SparkContext 的初始化。SparkContext 可以算得上是所 有 Spark 应用程序的发动机引擎。SparkContext 初始 化完毕,才能向 Spark 集群提交任务。
+  * Spark Driver 用于提交用户应用程序,实际可以看作 Spark 的客户端。Spark Driver 的初始化始终围绕着 SparkContext 的初始化。
+  * SparkContext 可以算得上是所 有 Spark 应用程序的发动机引擎。SparkContext 初始 化完毕,才能向 Spark 集群提交任务。
   * 初始化步骤:
   *
   *
