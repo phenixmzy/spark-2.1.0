@@ -582,6 +582,9 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
     /**
      * Start a receiver along with its scheduled executors
      */
+    /**
+      * 启动一个接收器及其预定的executors
+      * */
     private def startReceiver(
         receiver: Receiver[_],
         scheduledLocations: Seq[TaskLocation]): Unit = {
@@ -601,6 +604,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         new SerializableConfiguration(ssc.sparkContext.hadoopConfiguration)
 
       // Function to start the receiver on the worker node
+      // 在Worker节点上启动receiver
       val startReceiverFunc: Iterator[Receiver[_]] => Unit =
         (iterator: Iterator[Receiver[_]]) => {
           if (!iterator.hasNext) {

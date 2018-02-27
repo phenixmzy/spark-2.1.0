@@ -30,7 +30,7 @@ import org.apache.spark.storage.StreamBlockId
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
- * Abstract class that is responsible for supervising a Receiver in the worker.
+ * Abstract class that is responsible for supervising（监管） a Receiver in the worker.
  * It provides all the necessary interfaces for handling the data received by the receiver.
  */
 /**
@@ -144,6 +144,10 @@ private[streaming] abstract class ReceiverSupervisor(
   }
 
   /** Start receiver */
+  /**
+    * 启动Receiver之前,ReceiverSupervisor会向ReceiverTrackerEndpoint发送RegisterReceiver注册消息,当注册成功后才继续进行
+    * Receiver的启动.
+    * */
   def startReceiver(): Unit = synchronized {
     try {
       // 调用子类的ReceiverSupervisor#onReceiverStart()方法,进行注册,如果注册成功,则继续进行流数据接收器(Receiver)的启动.

@@ -148,6 +148,10 @@ private[streaming] class ReceiverSupervisorImpl(
   }
 
   /** Store block and report it to driver */
+  /**
+    * Receiver接收数据的过程中,当保存完一个数据块时,作为数据存储的管理者ReceiverSupervisor会把数据块的元数据发送给ReceiverTrackerEndpoint,
+    * 实现方法为该类的pushAndReportBlock
+    * */
   def pushAndReportBlock(
       receivedBlock: ReceivedBlock,
       metadataOption: Option[Any],
@@ -155,9 +159,11 @@ private[streaming] class ReceiverSupervisorImpl(
     ) {
     val blockId = blockIdOption.getOrElse(nextBlockId)
     val time = System.currentTimeMillis
+    //　调用ReceiverBlockHandler#storeBlock方法进行保存数据块
     val blockStoreResult = receivedBlockHandler.storeBlock(blockId, receivedBlock)
     logDebug(s"Pushed block $blockId in ${(System.currentTimeMillis - time)} ms")
     val numRecords = blockStoreResult.numRecords
+    //　再把数据块的元数据发送给ReceiverTrackerEndpoint
     val blockInfo = ReceivedBlockInfo(streamId, numRecords, metadataOption, blockStoreResult)
     trackerEndpoint.askWithRetry[Boolean](AddBlock(blockInfo))
     logDebug(s"Reported block $blockId")

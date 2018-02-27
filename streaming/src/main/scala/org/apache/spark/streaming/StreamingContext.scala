@@ -70,20 +70,23 @@ import org.apache.spark.util.{CallSite, ShutdownHookManager, ThreadUtils, Utils}
   * Spark Streaming处理流数据大致分为4个步骤:
   * 启动流处理引擎 -> 接收和存储流数据 -> 处理流数据 -> 输出处理结果
   *
-  * 1) 初始化StreamingContext对象,在该对象启动过程中实例化DStreamGraph和JobScheduler,其中DStreamingGraph用于存放DStream以及Stream之间的依赖关系等信息;
+  * 1) 启动实例
+  * 初始化StreamingContext对象,在该对象启动过程中实例化DStreamGraph和JobScheduler,其中DStreamingGraph用于存放DStream以及Stream之间的依赖关系等信息;
   * 而JobScheduler中包含ReceiverTracker和JobGenerator,
   * --ReceiverTracker为Driver端流数据接收器(Receiver)等管理者;
   * --JobGenerator为批处理作业的生成器;
   * 在ReceiverTracker 启动过程中,根据流数据接收器(Receiver) 分发策略通知对应的Executor中的流数据接收管理器(ReceiverSupervisor)启动,再由ReceiverSupervisor启动流数据接收器(Receiver).
   *
-  * 2) 当Receiver启动后,持续不断地接收实时流数据,根据传过来的数据的大小进行判断,如果数据量很小,则多条数据成一块;如果数据量大,则直接进行存储.对于这些数据Receiver直接交由ReceiverSupervisor进行数据转储操作.
+  * 2) Receiver接受数据,并交由ReceiverSupervisor转存数据
+  * 当Receiver启动后,持续不断地接收实时流数据,根据传过来的数据的大小进行判断,如果数据量很小,则多条数据成一块;如果数据量大,则直接进行存储.对于这些数据Receiver直接交由ReceiverSupervisor进行数据转储操作.
   * 块存储根据设置是否预写日志分为两种,一种是非预写日志,另一种是预写日志.
   * --非预写日志(BlockManagerBasedBlockHandler方法):直接写到Worker的内存或磁盘中.
   * --预写日志(WriteAheadLogBasedBlockHandler方法):在预写日志同时把数据写入岛Worker的内存或磁盘中.
   *
   * 数据存储完毕后,ReceiverSupervisor会把数据存储的元信息上报给ReceiverTracker,其再把这些信息转发给ReceiverBlockTracker,由它负责管理收到数据块的元信息.
   *
-  * 3) StreamingContext的JobGenerator中维护了一个定时器,该定时器在批处理时间到来时会进行生成作业的操作,其中步骤如下:
+  * 3) 定时生成作业,处理数据(将接收到的数据进行提交,生成作业序列Seq[Job],获取本批次数据的元数据,包装为JobSet提交到Spark Core进行处理)
+  * StreamingContext的JobGenerator中维护了一个定时器,该定时器在批处理时间到来时会进行生成作业的操作,其中步骤如下:
   * 1. 通知ReceiverTracker 将接收到的数据进行提交,在提交时才用同步关键字(synchronized)进行处理,保证每条数据被划入有且只有一个的Batch中.
   * 2. 要求DStream依赖关系生成作业序列Seq[Job]
   * 3. 从第一步中ReceiverTracker 获取本批次数据的元数据.
@@ -233,6 +236,8 @@ class StreamingContext private[streaming] (
     if (isCheckpointPresent) _cp.checkpointDuration else graph.batchDuration
   }
 
+  // 初始化JobScheduler,其里面包含ReceiverTracker和JobGenerator
+  // 其中SparkStreamingContext有自己的作业定时期,JobGenerator会定时生成批量作业;而ReceiverTracker用于管理Receiver.
   private[streaming] val scheduler = new JobScheduler(this)
 
   private[streaming] val waiter = new ContextWaiter
