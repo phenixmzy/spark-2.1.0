@@ -54,6 +54,17 @@ import org.apache.spark.streaming.receiver.Receiver
  * In conclusion, we should make a global schedule, try to achieve that exactly as long as possible,
  * otherwise do local scheduling.
  */
+/**
+  * 可插拔的Receiver分发策略在ReceiverSchedulingPolicy中定义.最为重要的方法为scheduleReceivers
+  *
+  * 1 在Receiver分发之前会收到所有的InputDStreama包含的所有Receiver
+  * 实例和Exceutor.
+  * 2 调用该类中的scheduleReceivers方法计算每个Receiver对应的Exceutor.该方法中以轮询调度方法进行分配.
+  * 2.1 其首先对存在首选位置的Receiver进行处理,尽可能把Receiver运行在首选位置host的Receiver个数最少的Exceutor中;
+  * 2.2 接着对于没有首选位置的Receiver,则优先分配到运行Receiver个数最少的Exceutor中;
+  * 分配完成后返回调度好的Executor列表.
+  *
+  * */
 private[streaming] class ReceiverSchedulingPolicy {
 
   /**
@@ -73,6 +84,14 @@ private[streaming] class ReceiverSchedulingPolicy {
    *
    * @return a map for receivers and their scheduled locations
    */
+  /**
+    * 尽量安排均匀分布的Receiver.
+    * scheduleReceivers方法计算每个Receiver对应的Exceutor.该方法中以轮询调度方法进行分配.
+    * 1 其首先对存在首选位置的Receiver进行处理,尽可能把Receiver运行在首选位置host的Receiver个数最少的Exceutor中;
+    * 2 接着对于没有首选位置的Receiver,则优先分配到运行Receiver个数最少的Exceutor中;
+    * 最后分配完成后返回调度好的Executor列表.
+    *
+    * */
   def scheduleReceivers(
       receivers: Seq[Receiver[_]],
       executors: Seq[ExecutorCacheTaskLocation]): Map[Int, Seq[TaskLocation]] = {
@@ -85,17 +104,29 @@ private[streaming] class ReceiverSchedulingPolicy {
     }
 
     val hostToExecutors = executors.groupBy(_.host)
+
+    /** 定义Exceutor个数的数组用于存放Executors列表,该数组和Receiver序列一一对应 */
     val scheduledLocations = Array.fill(receivers.length)(new mutable.ArrayBuffer[TaskLocation])
+
+    /** 定义Executor,运行Receiver个数的哈希列表 */
     val numReceiversOnExecutor = mutable.HashMap[ExecutorCacheTaskLocation, Int]()
+
     // Set the initial value to 0
+    /** 设置初始值为 0 */
     executors.foreach(e => numReceiversOnExecutor(e) = 0)
 
     // Firstly, we need to respect "preferredLocation". So if a receiver has "preferredLocation",
     // we need to make sure the "preferredLocation" is in the candidate scheduled executor list.
+    /** 首先,我们需要注重首选位置.所以如果Receiver存在首选位置,则把首选位置放置在候选调度Executor列表中 */
     for (i <- 0 until receivers.length) {
       // Note: preferredLocation is host but executors are host_executorId
       receivers(i).preferredLocation.foreach { host =>
         hostToExecutors.get(host) match {
+            /**
+              * 如果Receiver的首选位置在传入的Executor序列中,则在schedulerExecutors的Receiver加入对应的Executor,
+              * 在numReceiverOnExecutor对应Executor的Receiver个数+1.
+              * 需要注意的是,获取该首选位置host运行的Receiver个数最小的Executor
+              * */
           case Some(executorsOnHost) =>
             // preferredLocation is a known host. Select an executor that has the least receivers in
             // this host
@@ -120,6 +151,9 @@ private[streaming] class ReceiverSchedulingPolicy {
 
     // For those receivers that don't have preferredLocation, make sure we assign at least one
     // executor to them.
+    /** 对于那些不存在首选位置的Receiver,则在 numReceiversOnExecutor获取Receiver计数最小的元素,把该Receiver放到其
+      * Executor进行运行,并更新numReceiversOnExecutor列表信息.
+      * */
     for (scheduledLocationsForOneReceiver <- scheduledLocations.filter(_.isEmpty)) {
       // Select the executor that has the least receivers
       val (leastScheduledExecutor, numReceivers) = numReceiversOnExecutor.minBy(_._2)
@@ -135,6 +169,7 @@ private[streaming] class ReceiverSchedulingPolicy {
       leastScheduledExecutors += executor
     }
 
+    /** 返回调度好的Executor列表,该列表和Receiver序列一一对应 */
     receivers.map(_.streamId).zip(scheduledLocations).toMap
   }
 
