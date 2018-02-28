@@ -604,7 +604,12 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         new SerializableConfiguration(ssc.sparkContext.hadoopConfiguration)
 
       // Function to start the receiver on the worker node
-      // 在Worker节点上启动receiver
+      // StringContext启动过程中,ReceiverTracker会把Receiver分发到Executor上,在每个Executor上,由ReceiverSupervisor启动对应的Receiver.
+      // 1 先遍历ReceiverInputStream,通过其getReceiver获取需要启动的N个Receiver实例,然后把这些实例作为N份数据,在StreamingContext创建一个RDD实例,
+      // 则RDD分为N个partition,每个partition对应包含一个Receiver数据.
+      // 2 在Worker节点上启动receiver,把Receiver所进行的计算定义为func函数(startReceiverFunc),startReceiverFunc以receiver实例为参数
+      // 构造ReceiverSupervisorImpl实例supervisor,构造完毕后使用新线程启动该supervisor并阻塞该线程.
+      // 3 ReceiverTracker尽可能地按照Receiver的首选位置分发到集群并启动,启动完毕后Receiver会处于阻塞状态,持续不断接入流数据.
       val startReceiverFunc: Iterator[Receiver[_]] => Unit =
         (iterator: Iterator[Receiver[_]]) => {
           if (!iterator.hasNext) {
