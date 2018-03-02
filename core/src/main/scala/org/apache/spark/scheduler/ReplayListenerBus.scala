@@ -32,6 +32,9 @@ import org.apache.spark.util.JsonProtocol
 /**
  * A SparkListenerBus that can be used to replay events from serialized event data.
  */
+/**
+  * 一个 SparkListenerBus,用于回放各种Event事件的数据.
+  * */
 private[spark] class ReplayListenerBus extends SparkListenerBus with Logging {
 
   /**
@@ -49,6 +52,9 @@ private[spark] class ReplayListenerBus extends SparkListenerBus with Logging {
    *        should be parsed and replayed. When not specified, all event strings in the log data
    *        are parsed and replayed.
    */
+  /**
+    * 按照给定流中,保持顺序重放每个事件.预计流将每行包含一个JSON格式的SparkListenerEvent.
+    * */
   def replay(
       logData: InputStream,
       sourceName: String,
