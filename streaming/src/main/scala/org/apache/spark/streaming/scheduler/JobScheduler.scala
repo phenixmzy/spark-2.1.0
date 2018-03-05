@@ -70,6 +70,10 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
 
   private var eventLoop: EventLoop[JobSchedulerEvent] = null
 
+  /**
+    * 创建完InputDStream后,调用StreamingContext#start() 启动应用程序,其最重要的是启动JobScheduler.
+    * 如上时序图,调用JobScheduler#start()启动 JobScheduler,主要是创建和启动EventLoop和ReceiverTracker和启动JobGenerator.
+    * */
   def start(): Unit = synchronized {
     if (eventLoop != null) return // scheduler has already been started
 

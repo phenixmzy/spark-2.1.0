@@ -81,6 +81,10 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   private var lastProcessedBatch: Time = null
 
   /** Start generation of jobs */
+  /**
+    * 启动JobGenerator,如果不是第一次运行,需要从checkpoint恢复.如果是第一次运行,则调用startFirstTime进行启动.
+    * startFirstTime初始化了定时器的启动时间,启动timer和DStreamGraph.
+    * */
   def start(): Unit = synchronized {
     if (eventLoop != null) return // generator has already been started
 
@@ -192,6 +196,10 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   }
 
   /** Starts the generator for the first time */
+  /**
+    * timer.getStartTime()会计算出下一周期的到期时间;
+    * DStreamGraph的启动时间则为 startTime - graph.batchDuration,因此DStreamGraph要比定时器早一个时间间隔.
+    * */
   private def startFirstTime() {
     val startTime = new Time(timer.getStartTime())
     graph.start(startTime - graph.batchDuration)

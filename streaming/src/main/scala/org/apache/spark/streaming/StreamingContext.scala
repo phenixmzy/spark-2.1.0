@@ -370,6 +370,11 @@ class StreamingContext private[streaming] (
    * @param storageLevel  Storage level to use for storing the received objects
    * @tparam T            Type of the objects received (after converting bytes to objects)
    */
+  /**
+    * 调用StreamingContext#socketTextStream生成具体的InputDStream.
+    * 比如SocketInputDStream内部重写了ReceiverInputDStream#receiver方法,用来生成Receiver,
+    * 当Streaming分发Receiver进行调用.在getReceiver方法内生成一个SocketReceiver实例,并在实例中启动线程接收数据.
+    * */
   def socketStream[T: ClassTag](
       hostname: String,
       port: Int,
