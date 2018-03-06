@@ -429,6 +429,9 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    * "spark.scheduler.minRegisteredResourcesRatio" and
    * "spark.scheduler.maxRegisteredResourcesWaitingTime" rather than running a dummy job.
    */
+  /**
+    * 运行一个傀儡Spark Job以确保所有的slaves都已经注册.避免所有的receivers被调度到同一个worker node上.
+    * */
   private def runDummySparkJob(): Unit = {
     if (!ssc.sparkContext.isLocal) {
       ssc.sparkContext.makeRDD(1 to 50, 50).map(x => (x, 1)).reduceByKey(_ + _, 20).collect()
@@ -440,7 +443,11 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    * Get the receivers from the ReceiverInputDStreams, distributes them to the
    * worker nodes as a parallel collection, and runs them.
    */
+  /**
+    * 从ReceiverInputDStreams获得对应的Receivers,并通过TrackerReceiverEndpoint把它们分发到各个worker节点上作为一个并行收集器运行.
+    * */
   private def launchReceivers(): Unit = {
+    // 获取定义的InputDStream对应的Receiver
     val receivers = receiverInputStreams.map { nis =>
       val rcvr = nis.getReceiver()
       rcvr.setReceiverId(nis.id)
@@ -450,6 +457,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
     runDummySparkJob()
 
     logInfo("Starting " + receivers.length + " receivers")
+    // 通过TrackerReceiverEndpoint把它们分发到各个worker节点上作为一个并行收集器运行.
     endpoint.send(StartAllReceivers(receivers))
   }
 
@@ -619,6 +627,8 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
           if (TaskContext.get().attemptNumber() == 0) {
             val receiver = iterator.next()
             assert(iterator.hasNext == false)
+            // 创建Receiver管理器,用于监管该数据流接收器(Receiver)
+            // 在该方法中完成了对Receiver对启动和注册.
             val supervisor = new ReceiverSupervisorImpl(
               receiver, SparkEnv.get, serializableHadoopConf.value, checkpointDirOption)
             supervisor.start()
