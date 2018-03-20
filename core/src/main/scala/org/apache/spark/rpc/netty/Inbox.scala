@@ -90,6 +90,9 @@ private[netty] class Inbox(
   /**
    * Process stored messages.
    */
+  /**
+    * 处理存储在Inbox中队列的message.process方法会一次调用会把endpoint对应的Inbox的消息队列进行清倒,直到清空后退出process方法.
+    * */
   def process(dispatcher: Dispatcher): Unit = {
     var message: InboxMessage = null
     inbox.synchronized {

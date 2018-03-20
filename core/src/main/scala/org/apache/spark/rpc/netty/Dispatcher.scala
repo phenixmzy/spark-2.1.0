@@ -182,8 +182,8 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv) extends Logging {
       } else if (data == null) {
         Some(new SparkException(s"Could not find $endpointName."))
       } else {
-        data.inbox.post(message)
-        receivers.offer(data)
+        data.inbox.post(message) //把message放入endpoint所属的Inbox队里中.
+        receivers.offer(data) //追加一个元素到队列尾部,方法不阻塞.如果队列空间未满,则插入队列中.
         None
       }
     }

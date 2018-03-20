@@ -48,7 +48,7 @@ private[spark] trait RpcEnvFactory {
   * RPC消息触发的终点,当一个消息到来时,方法调用顺序会保证 onStart -> receive* -> onStop 顺序调用.
   * receive会被同时调用,如果想运行在安全的线程中,要使用ThreadSafeRpcEndpoint.
   *
-  * RpcEndpoint定义了RPC通信过程中的通信端对象，除了具有管理一个RpcEndpoint生命周期的操作（constructor -&gt; onStart -> receive* -> onStop），
+  * RpcEndpoint定义了RPC通信过程中的通信终端对象，除了具有管理一个RpcEndpoint生命周期的操作（constructor -> onStart -> receive* -> onStop），
   * 并给出了通信过程中一个RpcEndpoint所具有的基于事件驱动的行为（连接、断开、网络异常）,
   * 实际上对于Spark框架来说主要是接收消息并处理.
   * 通过上面的receive方法，接收由RpcEndpointRef#send方法发送的消息,该类消息不需要进行响应消息(Reply),
