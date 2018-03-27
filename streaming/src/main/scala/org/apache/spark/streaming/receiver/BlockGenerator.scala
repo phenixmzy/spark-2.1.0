@@ -74,6 +74,12 @@ private[streaming] trait BlockGeneratorListener {
  * Note: Do not create BlockGenerator instances directly inside receivers. Use
  * `ReceiverSupervisor.createBlockGenerator` to create a BlockGenerator and use it.
  */
+/**
+  * 用于把接收到的数据划分入数据块中以及把数据块推送给BlockManager.其中,start方法主要完成以下两件事情:
+  * 1.开启一个定时器,定期把缓存中的数据封装成Block数据块
+  * 2.启动一个线程,不断把封装好的Block数据推送给BlockManager
+  * 此外,该类还继承自RateLimiter.通过配置参数spark.streaming.receiver.maxRate 控制消费速率
+  * */
 private[streaming] class BlockGenerator(
     listener: BlockGeneratorListener,
     receiverId: Int,
@@ -102,22 +108,28 @@ private[streaming] class BlockGenerator(
 
   private val blockIntervalMs = conf.getTimeAsMs("spark.streaming.blockInterval", "200ms")
   require(blockIntervalMs > 0, s"'spark.streaming.blockInterval' should be a positive value")
-
+  //RecurringTimer定时器每隔一个设置的时间间隔就把接收到的流数据封装成数据块,放入blocksForPushing阻塞队列中.
   private val blockIntervalTimer =
     new RecurringTimer(clock, blockIntervalMs, updateCurrentBuffer, "BlockGenerator")
   private val blockQueueSize = conf.getInt("spark.streaming.blockQueueSize", 10)
   private val blocksForPushing = new ArrayBlockingQueue[Block](blockQueueSize)
+  //该blockPushingThread线程把封装好的数据块传递到BlcokManager
   private val blockPushingThread = new Thread() { override def run() { keepPushingBlocks() } }
-
+  //receiver接收到的数据先缓存到ArrayBuffer
   @volatile private var currentBuffer = new ArrayBuffer[Any]
   @volatile private var state = Initialized
 
   /** Start block generating and pushing threads. */
+  /**
+    * 1.启动一个数据块生成的定时器blockIntervalTimer,将当前currentBuffer缓存中的数据按照用户在Spark Streaming应用设置的
+    * 批处理时间间隔封装成一个Block数据块,然后存放到BlcokGenerator的blocksForPushing队列中.
+    * 2.启动一个BlockPushingThread线程,不断将BlockForPush队列中的数据块传递给BlockManager.
+    * */
   def start(): Unit = synchronized {
     if (state == Initialized) {
       state = Active
-      blockIntervalTimer.start()
-      blockPushingThread.start()
+      blockIntervalTimer.start()//开启一个定时器,定期把缓存中的数据封装成Block数据块
+      blockPushingThread.start()//启动一个线程,不断把封装好的Block数据推送给BlockManager
       logInfo("Started BlockGenerator")
     } else {
       throw new SparkException(
@@ -158,6 +170,9 @@ private[streaming] class BlockGenerator(
   /**
    * Push a single data item into the buffer.
    */
+  /**
+    * push 但条数据到currentBuffer里面
+    * */
   def addData(data: Any): Unit = {
     if (state == Active) {
       waitToPush()
@@ -202,6 +217,9 @@ private[streaming] class BlockGenerator(
    * `BlockGeneratorListener.onAddData` callback will be called. Note that all the data items
    * are atomically added to the buffer, and are hence guaranteed to be present in a single block.
    */
+  /**
+    * push多条数据到buffer.所有的数据从此都会被持久化到一个block里面.
+    * */
   def addMultipleDataWithCallback(dataIterator: Iterator[Any], metadata: Any): Unit = {
     if (state == Active) {
       // Unroll iterator into a temp buffer, and wait for pushing in the process
@@ -272,6 +290,7 @@ private[streaming] class BlockGenerator(
       }
 
       // At this point, state is StoppedGeneratingBlock. So drain the queue of to-be-pushed blocks.
+      // 关闭前,清倒队列中的block
       logInfo("Pushing out the last " + blocksForPushing.size() + " blocks")
       while (!blocksForPushing.isEmpty) {
         val block = blocksForPushing.take()

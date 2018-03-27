@@ -34,6 +34,9 @@ import org.apache.spark.internal.Logging
  *
  * @param conf spark configuration
  */
+/**
+  * 通过配置参数spark.streaming.receiver.maxRate 控制消费速率.
+  * */
 private[receiver] abstract class RateLimiter(conf: SparkConf) extends Logging {
 
   // treated as an upper limit

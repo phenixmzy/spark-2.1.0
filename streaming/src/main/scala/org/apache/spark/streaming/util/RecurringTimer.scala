@@ -100,6 +100,9 @@ class RecurringTimer(clock: Clock, period: Long, callback: (Long) => Unit, name:
   /**
    * Repeatedly call the callback every interval.
    */
+  /**
+    * 计算每次调用的时间
+    * */
   private def loop() {
     try {
       while (!stopped) {

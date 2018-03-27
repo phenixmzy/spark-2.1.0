@@ -42,6 +42,10 @@ import org.apache.spark.util.RpcUtils
  * the receiver. Specifically, it creates a [[org.apache.spark.streaming.receiver.BlockGenerator]]
  * object that is used to divide the received data stream into blocks of data.
  */
+/**
+  * 具体实现org.apache.spark.streaming.receiver.ReceiverSupervisor,其提供了所有通过接收器接收到的数据处理方法,
+  * 特别的,其创建了一个BlockGenerator对象用于把接收到的数据划分入数据块中.
+  * */
 private[streaming] class ReceiverSupervisorImpl(
     receiver: Receiver[_],
     env: SparkEnv,

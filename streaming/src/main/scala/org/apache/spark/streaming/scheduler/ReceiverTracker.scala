@@ -591,7 +591,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
      * Start a receiver along with its scheduled executors
      */
     /**
-      * 启动一个接收器及其预定的executors
+      * 启动一个分发到Executor的流数据接接收器.
       * */
     private def startReceiver(
         receiver: Receiver[_],
