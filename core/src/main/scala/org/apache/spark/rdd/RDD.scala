@@ -356,6 +356,10 @@ abstract class RDD[T: ClassTag](
   /**
    * Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached.
    */
+  /**
+    * RDD的运算是基于partition,从该方法开始,逻辑的partition与物理的block就发生了联系.
+    * getOrCompute是一个RDD调度到executor上会运行调用.
+    * */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
     //通过RDD编号和partition序列的编号获取Block的编号
     val blockId = RDDBlockId(id, partition.index)
